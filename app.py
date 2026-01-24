@@ -963,8 +963,7 @@ def check_alerts(mu_h: float, mu_a: float, tki_h: float, tki_a: float,
     
     return alerts
 
-# ==================== GOOGLE SHEETS FUNKTIONEN (UNVERÄNDERT) ====================
-@st.cache_resource
+# ==================== GOOGLE SHEETS FUNKTIONEN ====================
 @st.cache_resource
 def connect_to_sheets():
     scope = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
@@ -987,7 +986,6 @@ def connect_to_sheets():
         # Credentials erstellen
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         service = build('sheets', 'v4', credentials=creds)
-        st.success("✅ Google Sheets Verbindung erfolgreich")
         return service
         
     except Exception as e:
@@ -1024,7 +1022,7 @@ def read_worksheet_data(sheet_url, sheet_name):
         st.error(f"❌ Fehler: {e}")
         return None
 
-# ==================== DATA PARSER (UNVERÄNDERT - KOPIERT VON OBEN) ====================
+# ==================== DATA PARSER ====================
 class DataParser:
     def __init__(self):
         self.lines = []
@@ -1307,142 +1305,158 @@ def main():
     st.markdown("**Neu:** Gesamt-Risiko 1-5 + individuelle Wetten-Risikos")
     st.markdown("---")
     
-    st.subheader("📊 Schritt 1: Google Sheets Datei")
-    sheet_url = st.text_input(
-        "Google Sheets URL:",
-        placeholder="https://docs.google.com/spreadsheets/d/...",
-        help="URL deiner 'Perplexity' Datei",
-        key="sheet_url_input"
+    # ✅ DEINE FESTE SHEETS URL - AUTOMATISCHER START
+    SHEET_URL = "https://docs.google.com/spreadsheets/d/15V0TAf25LVekVMag7lklomQKNCj-fpl2POwWdVncN_A/edit"
+    
+    # Sofortige Anzeige der aktiven Datei
+    st.info(f"📁 **Aktive Analyse-Datei:** [Google Sheets Link]({SHEET_URL})")
+    
+    # Automatisch Matches laden
+    with st.spinner("📥 Lade Matches aus Google Sheets..."):
+        worksheets = get_all_worksheets(SHEET_URL)
+    
+    if not worksheets:
+        st.error("❌ Keine Matches gefunden oder keine Verbindung möglich")
+        st.info("Bitte überprüfe:")
+        st.markdown("""
+        1. **Google Sheets Datei** ist geteilt mit: `sportwetten-prognose@sportwetten-prognose.iam.gserviceaccount.com`
+        2. **Internetverbindung** ist vorhanden
+        3. **Datei** enthält Match-Daten im richtigen Format
+        """)
+        return
+    
+    st.success(f"✅ **{len(worksheets)} Matches geladen!**")
+    st.markdown("---")
+    
+    # Match-Auswahl
+    st.subheader("🎯 Schritt 1: Match auswählen")
+    
+    # Suchfeld für Matches
+    search_term = st.text_input(
+        "🔍 Match suchen (Teamname oder Liga):",
+        placeholder="z.B. 'Bayern' oder 'Bundesliga'",
+        help="Suche nach Teamnamen oder Wettbewerben",
+        key="match_search"
     )
     
-    if sheet_url:
-        st.markdown("---")
-        st.subheader("📋 Schritt 2: Match auswählen")
-        
-        with st.spinner("📥 Lade Tabellenblätter..."):
-            worksheets = get_all_worksheets(sheet_url)
-        
-        if worksheets:
-            st.success(f"✅ {len(worksheets)} Matches gefunden!")
-            
-            # Suchfeld für Matches
-            st.markdown("**🔍 Match suchen:**")
-            search_term = st.text_input(
-                "Suche nach Teamname oder Liga:",
-                placeholder="z.B. 'Bayern' oder 'Bundesliga'",
-                help="Suche nach Teamnamen oder Wettbewerben",
-                key="match_search"
+    # Filtere Worksheets basierend auf Suchbegriff
+    if search_term:
+        filtered_worksheets = {
+            k: v for k, v in worksheets.items() 
+            if search_term.lower() in k.lower()
+        }
+        if filtered_worksheets:
+            st.info(f"📋 {len(filtered_worksheets)} von {len(worksheets)} Matches passen zur Suche")
+        else:
+            st.warning("Keine Matches gefunden, die der Suche entsprechen.")
+            filtered_worksheets = worksheets
+    else:
+        filtered_worksheets = worksheets
+    
+    # Match-Auswahl Dropdown
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        if filtered_worksheets:
+            selected_worksheet = st.selectbox(
+                "Wähle Match:", 
+                list(filtered_worksheets.keys()), 
+                key="worksheet_select",
+                help="Wähle ein Match für die detaillierte Analyse"
             )
+        else:
+            st.warning("Keine Matches verfügbar")
+            selected_worksheet = None
             
-            # Filtere die Worksheets basierend auf Suchbegriff
-            if search_term:
-                filtered_worksheets = {
-                    k: v for k, v in worksheets.items() 
-                    if search_term.lower() in k.lower()
-                }
-                st.info(f"📋 {len(filtered_worksheets)} von {len(worksheets)} Matches passen zur Suche")
-            else:
-                filtered_worksheets = worksheets
+    with col2:
+        st.markdown("**Oder alle analysieren:**")
+        analyze_all = st.checkbox("Alle Matches", key="analyze_all_check")
+    
+    # Daten-Vorschau (optional)
+    if selected_worksheet and st.checkbox("👁️ Daten-Vorschau anzeigen", key="show_preview"):
+        with st.expander("📄 Rohdaten-Vorschau"):
+            preview_data = read_worksheet_data(SHEET_URL, selected_worksheet)
+            if preview_data:
+                st.text(preview_data[:1000] + "\n..." if len(preview_data) > 1000 else preview_data)
+    
+    st.markdown("---")
+    st.subheader("⚙️ Schritt 2: Analyse starten")
+    
+    # Analyse-Button für einzelnes Match
+    if selected_worksheet and not analyze_all:
+        if st.button(f"🔄 '{selected_worksheet}' analysieren", type="primary", use_container_width=True):
+            with st.spinner(f"⚙️ Analysiere {selected_worksheet}..."):
+                match_data = read_worksheet_data(SHEET_URL, selected_worksheet)
+                
+                if match_data:
+                    try:
+                        parser = DataParser()
+                        match = parser.parse(match_data)
+                        result = analyze_match_v49(match)
+                        
+                        st.success("✅ Analyse abgeschlossen!")
+                        st.markdown("---")
+                        display_results_v49(result)
+                        
+                    except Exception as e:
+                        st.error(f"❌ Fehler bei der Analyse: {e}")
+                        st.info("Stelle sicher, dass die Tabellendaten korrekt formatiert sind.")
+    
+    # Analyse für alle Matches
+    elif analyze_all:
+        if st.button("🔄 ALLE Matches analysieren", type="primary", use_container_width=True):
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            all_results = []
             
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                if filtered_worksheets:
-                    selected_worksheet = st.selectbox(
-                        "Wähle Match:", 
-                        list(filtered_worksheets.keys()), 
-                        key="worksheet_select",
-                        help="Wähle ein Match aus der gefilterten Liste"
-                    )
-                else:
-                    st.warning("Keine Matches gefunden, die der Suche entsprechen.")
-                    selected_worksheet = None
-                    
-            with col2:
-                st.markdown("**Oder analysiere alle:**")
-                analyze_all = st.checkbox("Alle Matches", key="analyze_all_check")
-                if search_term and analyze_all:
-                    st.info(f"⚠️ Suchfilter wird ignoriert, alle {len(worksheets)} Matches werden analysiert")
+            for i, (sheet_name, _) in enumerate(worksheets.items()):
+                status_text.text(f"📊 Analysiere {sheet_name}... ({i+1}/{len(worksheets)})")
+                progress_bar.progress((i + 1) / len(worksheets))
+                
+                match_data = read_worksheet_data(SHEET_URL, sheet_name)
+                if match_data:
+                    try:
+                        parser = DataParser()
+                        match = parser.parse(match_data)
+                        result = analyze_match_v49(match)
+                        all_results.append({'sheet_name': sheet_name, 'result': result})
+                    except Exception as e:
+                        st.error(f"❌ Fehler bei {sheet_name}: {e}")
             
-            if selected_worksheet and not analyze_all:
-                with st.expander("👁️ Daten-Vorschau"):
-                    preview_data = read_worksheet_data(sheet_url, selected_worksheet)
-                    if preview_data:
-                        st.text(preview_data[:800] + "\n...")
+            status_text.text("✅ Alle Analysen abgeschlossen!")
+            progress_bar.empty()
             
+            # Übersicht aller Matches
             st.markdown("---")
-            st.subheader("⚙️ Schritt 3: Analyse")
+            st.header("📊 ÜBERSICHT ALLER MATCHES")
             
-            if analyze_all:
-                if st.button("🔄 ALLE Matches analysieren", type="primary", use_container_width=True, key="analyze_all_btn"):
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    all_results = []
-                    
-                    for i, (sheet_name, _) in enumerate(worksheets.items()):
-                        status_text.text(f"📊 Analysiere {sheet_name}... ({i+1}/{len(worksheets)})")
-                        progress_bar.progress((i + 1) / len(worksheets))
-                        
-                        match_data = read_worksheet_data(sheet_url, sheet_name)
-                        if match_data:
-                            try:
-                                parser = DataParser()
-                                match = parser.parse(match_data)
-                                result = analyze_match_v49(match)
-                                all_results.append({'sheet_name': sheet_name, 'result': result})
-                            except Exception as e:
-                                st.error(f"❌ Fehler bei {sheet_name}: {e}")
-                    
-                    status_text.text("✅ Alle Analysen abgeschlossen!")
-                    progress_bar.empty()
-                    
-                    # Übersicht
-                    st.markdown("---")
-                    st.header("📊 ÜBERSICHT ALLER MATCHES")
-                    
-                    overview_data = []
-                    for item in all_results:
-                        r = item['result']
-                        risk = r['extended_risk']['overall']
-                        
-                        overview_data.append({
-                            'Match': f"{r['match_info']['home']} vs {r['match_info']['away']}",
-                            'μ_Total': f"{r['mu']['total']:.2f}",
-                            'Gesamt-Risiko': risk['score_text'],
-                            '1X2 Risiko': r['extended_risk']['1x2']['risk_text'],
-                            'Over 2.5': f"{r['probabilities']['over_25']:.1f}%",
-                            'BTTS Ja': f"{r['probabilities']['btts_yes']:.1f}%",
-                            'Vorhersage': r['predicted_score']
-                        })
-                    
-                    df_overview = pd.DataFrame(overview_data)
-                    st.dataframe(df_overview, use_container_width=True, hide_index=True)
-                    
-                    # Detailansichten
-                    st.markdown("---")
-                    st.header("📋 DETAILLIERTE ANALYSEN")
-                    for item in all_results:
-                        with st.expander(f"🎯 {item['sheet_name']} - {item['result']['predicted_score']}", expanded=False):
-                            display_results_v49(item['result'])
+            overview_data = []
+            for item in all_results:
+                r = item['result']
+                risk = r['extended_risk']['overall']
+                
+                overview_data.append({
+                    'Match': f"{r['match_info']['home']} vs {r['match_info']['away']}",
+                    'μ_Total': f"{r['mu']['total']:.2f}",
+                    'Gesamt-Risiko': risk['score_text'],
+                    '1X2 Risiko': r['extended_risk']['1x2']['risk_text'],
+                    'Over 2.5': f"{r['probabilities']['over_25']:.1f}%",
+                    'BTTS Ja': f"{r['probabilities']['btts_yes']:.1f}%",
+                    'Vorhersage': r['predicted_score']
+                })
             
-            elif selected_worksheet:
-                if st.button(f"🔄 '{selected_worksheet}' analysieren", type="primary", use_container_width=True, 
-                           key=f"analyze_single_{selected_worksheet}"):
-                    with st.spinner(f"⚙️ Analysiere {selected_worksheet}..."):
-                        match_data = read_worksheet_data(sheet_url, selected_worksheet)
-                        
-                        if match_data:
-                            try:
-                                parser = DataParser()
-                                match = parser.parse(match_data)
-                                result = analyze_match_v49(match)
-                                
-                                st.success("✅ Analyse abgeschlossen!")
-                                st.markdown("---")
-                                display_results_v49(result)
-                                
-                            except Exception as e:
-                                st.error(f"❌ Fehler bei der Analyse: {e}")
-                                st.info("Stelle sicher, dass die Tabellendaten korrekt formatiert sind.")
+            df_overview = pd.DataFrame(overview_data)
+            st.dataframe(df_overview, use_container_width=True, hide_index=True)
+            
+            # Detailansichten
+            st.markdown("---")
+            st.header("📋 DETAILLIERTE ANALYSEN")
+            for item in all_results:
+                with st.expander(f"🎯 {item['sheet_name']} - {item['result']['predicted_score']}", expanded=False):
+                    display_results_v49(item['result'])
+    
+    # Falls nichts ausgewählt
+    else:
+        st.info("ℹ️ Bitte wähle ein Match aus oder aktiviere 'Alle Matches'")
 
 # ==================== SIDEBAR ====================
 with st.sidebar:
@@ -1476,13 +1490,11 @@ with st.sidebar:
     
     st.subheader("📊 Google Sheets Info")
     try:
-        if 'sheet_url' in st.session_state and sheet_url and 'worksheets' in locals() and worksheets:
-            st.success("✅ Verbunden")
-            st.caption(f"{len(worksheets)} Tabellenblätter")
-        else:
-            st.info("ℹ️ Bitte Google Sheets URL eingeben")
+        st.success("✅ Verbunden")
+        st.caption(f"Aktive Datei geladen")
+        st.caption("https://docs.google.com/spreadsheets/d/15V0TAf25LVekVMag7lklomQKNCj-fpl2POwWdVncN_A/edit")
     except:
-        st.info("ℹ️ Bitte Google Sheets URL eingeben")
+        st.info("ℹ️ Automatische Verbindung aktiv")
     
     st.markdown("---")
     
