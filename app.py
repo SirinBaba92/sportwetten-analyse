@@ -967,8 +967,26 @@ def check_alerts(mu_h: float, mu_a: float, tki_h: float, tki_a: float,
 @st.cache_resource
 def connect_to_sheets():
     scope = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
-    return build('sheets', 'v4', credentials=creds)
+    
+    # Streamlit Cloud Secrets Handling
+    if 'gcp_service_account' in st.secrets:
+        creds_info = st.secrets['gcp_service_account']
+        
+        # Wenn es ein String ist, in JSON konvertieren
+        if isinstance(creds_info, str):
+            try:
+                import json
+                creds_info = json.loads(creds_info)
+            except:
+                st.error("Fehler beim Parsen der Google Credentials")
+                return None
+                
+        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        return build('sheets', 'v4', credentials=creds)
+    else:
+        st.error("⚠️ Google Sheets Credentials nicht konfiguriert")
+        st.info("Bitte in Streamlit Cloud Secrets einrichten")
+        return None
 
 @st.cache_data(ttl=300)
 def get_all_worksheets(sheet_url):
