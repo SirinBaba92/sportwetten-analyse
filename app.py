@@ -965,24 +965,29 @@ def check_alerts(mu_h: float, mu_a: float, tki_h: float, tki_a: float,
 
 # ==================== GOOGLE SHEETS FUNKTIONEN (UNVERÄNDERT) ====================
 @st.cache_resource
+@st.cache_resource
 def connect_to_sheets():
     scope = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
     
     try:
-        # Prüfe ob Secrets existieren
-        if 'gcp_service_account' not in st.secrets:
+        # Prüfe ob Base64 Secrets existieren
+        if 'gcp_service_account_b64' not in st.secrets:
             st.error("❌ Google Sheets Credentials nicht gefunden")
-            st.info("Bitte in Streamlit Cloud Secrets einrichten")
+            st.info("Bitte Base64 Credentials in Streamlit Cloud Secrets einrichten")
             return None
         
-        # Secrets als JSON String parsen
+        # Base64 String aus Secrets dekodieren
+        import base64
         import json
-        creds_json = st.secrets["gcp_service_account"]
+        
+        creds_b64 = st.secrets["gcp_service_account_b64"]
+        creds_json = base64.b64decode(creds_b64).decode('utf-8')
         creds_info = json.loads(creds_json)
         
         # Credentials erstellen
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         service = build('sheets', 'v4', credentials=creds)
+        st.success("✅ Google Sheets Verbindung erfolgreich")
         return service
         
     except Exception as e:
