@@ -7,8 +7,10 @@ import re
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
 import math
+from datetime import datetime
+import os
 
-st.set_page_config(page_title="Sportwetten-Prognose v4.9+", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Sportwetten-Prognose v4.11 OPTIMIZED", page_icon="⚽", layout="wide")
 
 # Session State initialisieren
 if 'alert_thresholds' not in st.session_state:
@@ -79,6 +81,165 @@ class MatchData:
     odds_ou25: Tuple[float, float]
     odds_btts: Tuple[float, float]
 
+# ==================== DATEN-VALIDIERUNG ====================
+def validate_match_data(match: MatchData) -> Tuple[bool, List[str]]:
+    """
+    Überprüft ob alle kritischen Datenpunkte vorhanden sind.
+    Returns: (is_valid, list_of_missing_fields)
+    """
+    missing_fields = []
+    
+    def check_team_data(team: TeamStats, team_name: str):
+        """Überprüft alle Datenpunkte eines Teams"""
+        team_missing = []
+        
+        # Team-Name (WICHTIG!)
+        if not team.name or team.name.strip() == "":
+            team_missing.append(f"{team_name}: Team-Name")
+        
+        # Basis-Statistiken
+        if team.position is None or team.position <= 0:
+            team_missing.append(f"{team_name}: Tabellenposition")
+        if team.games is None or team.games <= 0:
+            team_missing.append(f"{team_name}: Anzahl Spiele")
+        if team.wins is None:
+            team_missing.append(f"{team_name}: Siege")
+        if team.draws is None:
+            team_missing.append(f"{team_name}: Unentschieden")
+        if team.losses is None:
+            team_missing.append(f"{team_name}: Niederlagen")
+        
+        # Tore & Punkte
+        if team.goals_for is None:
+            team_missing.append(f"{team_name}: Tore geschossen")
+        if team.goals_against is None:
+            team_missing.append(f"{team_name}: Tore kassiert")
+        if team.goal_diff is None:
+            team_missing.append(f"{team_name}: Tordifferenz")
+        if team.points is None:
+            team_missing.append(f"{team_name}: Punkte")
+        
+        # Form-Daten (letzte 5 Spiele)
+        if team.form_points is None:
+            team_missing.append(f"{team_name}: Form-Punkte (L5)")
+        if team.form_goals_for is None:
+            team_missing.append(f"{team_name}: Form-Tore geschossen (L5)")
+        if team.form_goals_against is None:
+            team_missing.append(f"{team_name}: Form-Tore kassiert (L5)")
+        
+        # Heim/Auswärts-Statistiken
+        if team.ha_points is None:
+            team_missing.append(f"{team_name}: Heim/Auswärts-Punkte")
+        if team.ha_goals_for is None:
+            team_missing.append(f"{team_name}: H/A Tore geschossen")
+        if team.ha_goals_against is None:
+            team_missing.append(f"{team_name}: H/A Tore kassiert")
+        
+        # Durchschnittswerte (PPG, Goals per Match)
+        if team.ppg_overall is None or team.ppg_overall < 0:
+            team_missing.append(f"{team_name}: PPG Overall")
+        if team.ppg_ha is None or team.ppg_ha < 0:
+            team_missing.append(f"{team_name}: PPG Heim/Auswärts")
+        if team.avg_goals_match is None or team.avg_goals_match < 0:
+            team_missing.append(f"{team_name}: Ø Tore pro Spiel")
+        if team.avg_goals_match_ha is None or team.avg_goals_match_ha < 0:
+            team_missing.append(f"{team_name}: Ø Tore H/A")
+        
+        # Goals scored/conceded per match
+        if team.goals_scored_per_match is None or team.goals_scored_per_match < 0:
+            team_missing.append(f"{team_name}: Tore geschossen/Spiel")
+        if team.goals_conceded_per_match is None or team.goals_conceded_per_match < 0:
+            team_missing.append(f"{team_name}: Tore kassiert/Spiel")
+        if team.goals_scored_per_match_ha is None or team.goals_scored_per_match_ha < 0:
+            team_missing.append(f"{team_name}: Tore geschossen/Spiel H/A")
+        if team.goals_conceded_per_match_ha is None or team.goals_conceded_per_match_ha < 0:
+            team_missing.append(f"{team_name}: Tore kassiert/Spiel H/A")
+        
+        # BTTS, CS, FTS Prozentsätze
+        if team.btts_yes_overall is None or team.btts_yes_overall < 0:
+            team_missing.append(f"{team_name}: BTTS% Overall")
+        if team.btts_yes_ha is None or team.btts_yes_ha < 0:
+            team_missing.append(f"{team_name}: BTTS% H/A")
+        if team.cs_yes_overall is None or team.cs_yes_overall < 0:
+            team_missing.append(f"{team_name}: Clean Sheet% Overall")
+        if team.cs_yes_ha is None or team.cs_yes_ha < 0:
+            team_missing.append(f"{team_name}: Clean Sheet% H/A")
+        if team.fts_yes_overall is None or team.fts_yes_overall < 0:
+            team_missing.append(f"{team_name}: FTS% Overall")
+        if team.fts_yes_ha is None or team.fts_yes_ha < 0:
+            team_missing.append(f"{team_name}: FTS% H/A")
+        
+        # xG-Werte (Expected Goals)
+        if team.xg_for is None or team.xg_for < 0:
+            team_missing.append(f"{team_name}: xG For")
+        if team.xg_against is None or team.xg_against < 0:
+            team_missing.append(f"{team_name}: xG Against")
+        if team.xg_for_ha is None or team.xg_for_ha < 0:
+            team_missing.append(f"{team_name}: xG For H/A")
+        if team.xg_against_ha is None or team.xg_against_ha < 0:
+            team_missing.append(f"{team_name}: xG Against H/A")
+        
+        # Schuss-Statistiken
+        if team.shots_per_match is None or team.shots_per_match < 0:
+            team_missing.append(f"{team_name}: Schüsse/Spiel")
+        if team.shots_on_target is None or team.shots_on_target < 0:
+            team_missing.append(f"{team_name}: Schüsse aufs Tor")
+        if team.conversion_rate is None or team.conversion_rate < 0:
+            team_missing.append(f"{team_name}: Conversion Rate")
+        
+        # Ballbesitz
+        if team.possession is None or team.possession < 0:
+            team_missing.append(f"{team_name}: Ballbesitz%")
+        
+        return team_missing
+    
+    # Team-Daten überprüfen
+    missing_fields.extend(check_team_data(match.home_team, "HEIM"))
+    missing_fields.extend(check_team_data(match.away_team, "AUSWÄRTS"))
+    
+    # Match-Informationen
+    if not match.date or match.date.strip() == "":
+        missing_fields.append("Match-Datum")
+    if not match.competition or match.competition.strip() == "":
+        missing_fields.append("Wettbewerb/Liga")
+    if not match.kickoff or match.kickoff.strip() == "":
+        missing_fields.append("Anstoßzeit")
+    
+    # Quoten überprüfen
+    if not match.odds_1x2 or len(match.odds_1x2) != 3:
+        missing_fields.append("1X2 Quoten (vollständig)")
+    else:
+        if match.odds_1x2[0] is None or match.odds_1x2[0] <= 1.0:
+            missing_fields.append("1X2 Quote: Heim")
+        if match.odds_1x2[1] is None or match.odds_1x2[1] <= 1.0:
+            missing_fields.append("1X2 Quote: Unentschieden")
+        if match.odds_1x2[2] is None or match.odds_1x2[2] <= 1.0:
+            missing_fields.append("1X2 Quote: Auswärts")
+    
+    if not match.odds_ou25 or len(match.odds_ou25) != 2:
+        missing_fields.append("Over/Under 2.5 Quoten")
+    else:
+        if match.odds_ou25[0] is None or match.odds_ou25[0] <= 1.0:
+            missing_fields.append("Over 2.5 Quote")
+        if match.odds_ou25[1] is None or match.odds_ou25[1] <= 1.0:
+            missing_fields.append("Under 2.5 Quote")
+    
+    if not match.odds_btts or len(match.odds_btts) != 2:
+        missing_fields.append("BTTS Quoten")
+    else:
+        if match.odds_btts[0] is None or match.odds_btts[0] <= 1.0:
+            missing_fields.append("BTTS Ja Quote")
+        if match.odds_btts[1] is None or match.odds_btts[1] <= 1.0:
+            missing_fields.append("BTTS Nein Quote")
+    
+    # H2H kann leer sein (bei erstem Aufeinandertreffen), aber sollte zumindest existieren
+    if match.h2h_results is None:
+        missing_fields.append("H2H-Daten (Liste)")
+    
+    # Validierung abschließen
+    is_valid = len(missing_fields) == 0
+    return is_valid, missing_fields
+
 # ==================== POISSON FUNKTION ====================
 def poisson_probability(lmbda: float, k: int) -> float:
     """Exakte Poisson-Wahrscheinlichkeit"""
@@ -86,215 +247,322 @@ def poisson_probability(lmbda: float, k: int) -> float:
         return 1.0 if k == 0 else 0.0
     return (math.exp(-lmbda) * (lmbda ** k)) / math.factorial(k)
 
-# ==================== NEUES RISIKO-SCORING SYSTEM (1-5) ====================
-def calculate_extended_risk_scores_v49(prob_1x2_home: float, prob_1x2_draw: float, prob_1x2_away: float,
-                                      prob_over: float, prob_under: float,
-                                      prob_btts_yes: float, prob_btts_no: float,
-                                      odds_1x2: tuple, odds_ou: tuple, odds_btts: tuple,
-                                      mu_total: float, tki_combined: float, ppg_diff: float) -> Dict:
+# ==================== STRENGES RISIKO-SCORING SYSTEM ====================
+def calculate_extended_risk_scores_strict(prob_1x2_home: float, prob_1x2_draw: float, prob_1x2_away: float,
+                                         prob_over: float, prob_under: float,
+                                         prob_btts_yes: float, prob_btts_no: float,
+                                         odds_1x2: tuple, odds_ou: tuple, odds_btts: tuple,
+                                         mu_total: float, tki_combined: float, ppg_diff: float,
+                                         home_team, away_team) -> Dict:
     """
-    Berechnet Risiko-Scores für alle Wetten + Gesamt-Risiko (1-5)
-    1 = Sehr hohes Risiko, 5 = Sehr geringes Risiko
+    STRENGES Risiko-Scoring System (1-5)
+    Weniger 5/5, realistischere Bewertung
+    Erwartete Verteilung: 5/5=2-5%, 4/5=10-15%, 3/5=60-70%, 2/5=15-20%, 1/5=5-10%
     """
     
-    # Hilfsfunktion für Risiko-Beschreibung
-    def risk_description(score: int) -> str:
+    # Hilfsfunktion für strengere Risiko-Bewertung
+    def strict_risk_description(score: int) -> str:
         descriptions = {
-            1: "🔴 SEHR RISIKANT",
-            2: "🔴 RISIKANT", 
-            3: "🟡 NEUTRAL",
-            4: "🟢 SICHER",
-            5: "🟢 SEHR SICHER"
+            1: "🔴 EXTREM RISIKANT",
+            2: "🔴 HOHES RISIKO", 
+            3: "🟡 MODERATES RISIKO",
+            4: "🟢 GERINGES RISIKO",
+            5: "🟢 OPTIMALES RISIKO"
         }
-        return descriptions.get(score, "🟡 NEUTRAL")
+        return descriptions.get(score, "🟡 MODERATES RISIKO")
     
-    # 1. RISIKO-SCORE FÜR 1X2 (basierend auf Expected Value)
-    def calculate_1x2_risk(best_prob: float, best_odds: float) -> int:
+    # 1. STRENGERE 1X2 RISIKO-BEWERTUNG
+    def calculate_1x2_risk_strict(best_prob: float, best_odds: float, 
+                                 second_best_prob: float) -> int:
         """
-        Risiko-Score für 1X2 (1-5)
-        1 = Sehr riskant, 5 = Sehr sicher
+        STRENG: Erwartet höheren EV und berücksichtigt Wett-Konkurrenz
         """
-        # Expected Value Berechnung
+        # Expected Value
         ev = (best_prob / 100) * best_odds - 1
         
-        if ev < -0.25:
-            return 1  # Sehr schlechte Wette
-        elif ev < -0.1:
-            return 2  # Risikoreich
-        elif ev < 0.05:
-            return 3  # Neutral
-        elif ev < 0.15:
-            return 4  # Gute Wette
-        else:
-            return 5  # Sehr gute Wette
+        # Prüfe Wett-Dominanz: Wie viel besser ist die beste Option?
+        prob_dominance = best_prob - second_best_prob if second_best_prob > 0 else best_prob
+        
+        # STRENGE KRITERIEN:
+        if ev < -0.15:
+            return 1
+        elif ev < -0.05:
+            return 2
+        elif ev < 0.08:
+            if prob_dominance < 10:
+                return 3
+            else:
+                return 4
+        elif ev < 0.18:
+            if prob_dominance > 15:
+                return 4
+            else:
+                return 3
+        else:  # ev >= 0.18
+            if prob_dominance > 20 and ev > 0.25:
+                return 5
+            else:
+                return 4
     
-    # Beste 1X2 Option finden
-    best_1x2_prob = max(prob_1x2_home, prob_1x2_draw, prob_1x2_away)
-    if best_1x2_prob == prob_1x2_home:
-        best_1x2_odds = odds_1x2[0]
-        best_1x2_market = "Heimsieg"
-    elif best_1x2_prob == prob_1x2_draw:
-        best_1x2_odds = odds_1x2[1]
-        best_1x2_market = "Unentschieden"
-    else:
-        best_1x2_odds = odds_1x2[2]
-        best_1x2_market = "Auswärtssieg"
+    # Beste und zweitbeste 1X2 Option finden
+    probs_1x2 = [prob_1x2_home, prob_1x2_draw, prob_1x2_away]
+    markets = ['Heimsieg', 'Unentschieden', 'Auswärtssieg']
+    sorted_probs = sorted(zip(probs_1x2, odds_1x2, markets), key=lambda x: x[0], reverse=True)
     
-    risk_1x2 = calculate_1x2_risk(best_1x2_prob, best_1x2_odds)
+    best_prob, best_odds, best_market = sorted_probs[0]
+    second_best_prob = sorted_probs[1][0]
     
-    # 2. RISIKO-SCORE FÜR OVER/UNDER
-    def calculate_ou_risk(prob: float, odds: float) -> int:
-        """Risiko-Score für Over/Under (1-5)"""
+    risk_1x2 = calculate_1x2_risk_strict(best_prob, best_odds, second_best_prob)
+    
+    # 2. STRENGERE OVER/UNDER RISIKO-BEWERTUNG
+    def calculate_ou_risk_strict(prob: float, odds: float, mu_total: float) -> int:
+        """Strengere Bewertung für Over/Under"""
         ev = (prob / 100) * odds - 1
         
-        if ev < -0.25:
-            return 1
-        elif ev < -0.1:
-            return 2
-        elif ev < 0.05:
-            return 3
-        elif ev < 0.15:
-            return 4
-        else:
-            return 5
-    
-    risk_over = calculate_ou_risk(prob_over, odds_ou[0])
-    risk_under = calculate_ou_risk(prob_under, odds_ou[1])
-    
-    # 3. RISIKO-SCORE FÜR BTTS
-    risk_btts_yes = calculate_ou_risk(prob_btts_yes, odds_btts[0])
-    risk_btts_no = calculate_ou_risk(prob_btts_no, odds_btts[1])
-    
-    # 4. GESAMT-RISIKO-SCORE (1-5) basierend auf allen Faktoren
-    def calculate_overall_risk(risk_1x2: int, risk_over: int, risk_under: int, 
-                              risk_btts_yes: int, risk_btts_no: int,
-                              best_1x2_prob: float, mu_total: float, 
-                              tki_combined: float, ppg_diff: float) -> Dict:
-        """
-        Gesamt-Risiko-Score 1-5
-        1 = Sehr hohes Risiko
-        2 = Hohes Risiko  
-        3 = Moderates Risiko
-        4 = Geringes Risiko
-        5 = Sehr geringes Risiko
-        """
-        # Basis-Score aus Einzel-Risikos (gewichteter Durchschnitt)
-        avg_risk = (risk_1x2 * 0.4 +  # 1X2 hat höchste Gewichtung
-                   ((risk_over + risk_under) / 2) * 0.3 +
-                   ((risk_btts_yes + risk_btts_no) / 2) * 0.3)
+        # Berücksichtige μ-Total für Realismus
+        mu_adjustment = 0
         
-        # Anpassungen basierend auf Match-Charakteristika
+        if mu_total > 4.0 and prob > 65:
+            mu_adjustment = -1
+        elif mu_total < 2.0 and prob > 65:
+            mu_adjustment = -1
+        
+        # STRENGE EV KRITERIEN
+        if ev < -0.15:
+            base_score = 1
+        elif ev < -0.05:
+            base_score = 2
+        elif ev < 0.10:
+            base_score = 3
+        elif ev < 0.20:
+            base_score = 4
+        else:
+            base_score = 5
+        
+        return max(1, min(5, base_score + mu_adjustment))
+    
+    risk_over = calculate_ou_risk_strict(prob_over, odds_ou[0], mu_total)
+    risk_under = calculate_ou_risk_strict(prob_under, odds_ou[1], mu_total)
+    
+    # 3. STRENGERE BTTS RISIKO-BEWERTUNG
+    def calculate_btts_risk_strict(prob: float, odds: float, 
+                                  home_cs_rate: float, away_cs_rate: float) -> int:
+        """Strengere BTTS Bewertung mit Clean Sheet Berücksichtigung"""
+        ev = (prob / 100) * odds - 1
+        
+        # Clean Sheet Rate Penalty
+        cs_penalty = 0
+        avg_cs_rate = (home_cs_rate + away_cs_rate) / 2
+        
+        if prob > 70:
+            if avg_cs_rate > 0.4:
+                cs_penalty = -2
+            elif avg_cs_rate > 0.3:
+                cs_penalty = -1
+        
+        # STRENGE EV KRITERIEN
+        if ev < -0.15:
+            base_score = 1
+        elif ev < -0.05:
+            base_score = 2
+        elif ev < 0.12:
+            base_score = 3
+        elif ev < 0.22:
+            base_score = 4
+        else:
+            base_score = 5
+        
+        return max(1, min(5, base_score + cs_penalty))
+    
+    risk_btts_yes = calculate_btts_risk_strict(prob_btts_yes, odds_btts[0], 
+                                              home_team.cs_yes_ha, away_team.cs_yes_ha)
+    risk_btts_no = calculate_btts_risk_strict(prob_btts_no, odds_btts[1],
+                                             home_team.cs_yes_ha, away_team.cs_yes_ha)
+    
+    # 4. STRENGES GESAMT-RISIKO-SCORING
+    def calculate_overall_risk_strict(risk_1x2: int, risk_over: int, risk_under: int,
+                                     risk_btts_yes: int, risk_btts_no: int,
+                                     best_1x2_prob: float, mu_total: float,
+                                     tki_combined: float, ppg_diff: float,
+                                     home_games: int, away_games: int) -> Dict:
+        """
+        SEHR STRENGES Gesamt-Risiko (1-5)
+        Score 5 sollte extrem selten sein (<5% der Fälle)
+        """
+        
+        # GEWICHTETER DURCHSCHNITT
+        weights = {
+            '1x2': 0.35,
+            'ou': 0.30,
+            'btts': 0.25,
+            'data_quality': 0.10
+        }
+        
+        # Datenqualität Score
+        data_quality_score = 3
+        if home_games < 10 or away_games < 10:
+            data_quality_score = 2
+        if home_games < 5 or away_games < 5:
+            data_quality_score = 1
+        
+        avg_risk = (risk_1x2 * weights['1x2'] +
+                   ((risk_over + risk_under) / 2) * weights['ou'] +
+                   ((risk_btts_yes + risk_btts_no) / 2) * weights['btts'] +
+                   data_quality_score * weights['data_quality'])
+        
+        # ANPASSUNGEN (viel strenger!)
         adjustments = 0.0
         
-        # μ-Total Anpassung (torreiche Spiele = riskanter)
+        # 1. μ-TOTAL ANPASSUNG
         if mu_total > 4.5:
-            adjustments -= 1.2
+            adjustments -= 1.5
         elif mu_total > 4.0:
-            adjustments -= 0.8
+            adjustments -= 1.0
         elif mu_total > 3.5:
-            adjustments -= 0.4
+            adjustments -= 0.6
         elif mu_total < 2.0:
+            adjustments += 0.3
+        
+        # 2. TKI ANPASSUNG
+        if tki_combined > 1.0:
+            adjustments -= 1.5
+        elif tki_combined > 0.8:
+            adjustments -= 1.0
+        elif tki_combined > 0.6:
+            adjustments -= 0.6
+        
+        # 3. PPG DIFFERENZ (Paradox: Sehr klare Favoriten sind oft riskant)
+        ppg_diff_abs = abs(ppg_diff)
+        
+        if ppg_diff_abs > 1.5:
+            if best_1x2_prob > 75:
+                adjustments -= 0.5
+            else:
+                adjustments += 0.3
+        elif ppg_diff_abs > 1.0:
+            adjustments += 0.1
+        elif ppg_diff_abs < 0.2:
             adjustments += 0.4
         
-        # TKI Anpassung (Torwart-Krise = riskanter)
-        if tki_combined > 1.0:
-            adjustments -= 1.0
-        elif tki_combined > 0.8:
-            adjustments -= 0.5
-        elif tki_combined > 0.6:
+        # 4. WAHRSCHEINLICHKEITS-QUALITÄT
+        if best_1x2_prob > 75:
+            adjustments -= 0.3
+        elif best_1x2_prob > 65:
+            adjustments += 0.1
+        elif best_1x2_prob < 35:
             adjustments -= 0.3
         
-        # PPG Differenz (klarer Favorit = sicherer)
-        ppg_diff_abs = abs(ppg_diff)
-        if ppg_diff_abs > 1.5:
-            adjustments += 1.0
-        elif ppg_diff_abs > 1.0:
-            adjustments += 0.5
-        elif ppg_diff_abs > 0.5:
-            adjustments += 0.2
+        # 5. QUOTEN-QUALITÄT
+        best_odds_value = max(odds_1x2)
+        if best_odds_value > 3.0:
+            adjustments -= 0.5
+        elif best_odds_value < 1.5:
+            adjustments -= 0.3
         
-        # Wahrscheinlichkeits-Anpassung (klare Favoriten = sicherer)
-        if best_1x2_prob > 70:
-            adjustments += 0.8
-        elif best_1x2_prob > 60:
-            adjustments += 0.4
-        elif best_1x2_prob < 35:
+        # 6. STATISTISCHE SIGNIFIKANZ
+        total_games = home_games + away_games
+        if total_games < 20:
             adjustments -= 0.5
         
-        # Finalen Score berechnen (1-5)
+        # FINALER SCORE
         final_score = avg_risk + adjustments
-        final_score = max(1, min(5, round(final_score)))
         
-        # Kategorie und Empfehlung
-        if final_score == 1:
-            category = "🔴 SEHR HOHES RISIKO"
-            recommendation = "Extrem spekulativ - Vermeiden"
+        # SEHR STRENGE RUNDUNG
+        if final_score > 4.7:
+            final_score_int = 5
+        elif final_score > 3.7:
+            final_score_int = 4
+        elif final_score > 2.7:
+            final_score_int = 3
+        elif final_score > 1.7:
+            final_score_int = 2
+        else:
+            final_score_int = 1
+        
+        # KATEGORIE UND EMPFEHLUNG
+        if final_score_int == 1:
+            category = "🔴 EXTREM RISIKANT"
+            recommendation = "Vermeiden - sehr spekulativ"
             color = "darkred"
             score_text = "1/5"
-        elif final_score == 2:
+            emoji = "☠️"
+        elif final_score_int == 2:
             category = "🔴 HOHES RISIKO"
-            recommendation = "Nur für erfahrene Wettende"
+            recommendation = "Nur für erfahrene Wettende mit kleinem Einsatz"
             color = "red"
             score_text = "2/5"
-        elif final_score == 3:
+            emoji = "⚠️"
+        elif final_score_int == 3:
             category = "🟡 MODERATES RISIKO"
-            recommendation = "Standard-Risiko - Mit Vorsicht"
+            recommendation = "Standard-Wette mit normalem Einsatz"
             color = "yellow"
             score_text = "3/5"
-        elif final_score == 4:
+            emoji = "📊"
+        elif final_score_int == 4:
             category = "🟢 GERINGES RISIKO"
-            recommendation = "Solide Wettmöglichkeit"
+            recommendation = "Gute Wettmöglichkeit - empfohlener Einsatz"
             color = "lightgreen"
             score_text = "4/5"
-        else:  # final_score == 5
-            category = "🟢 SEHR GERINGES RISIKO"
-            recommendation = "Gute Basis für Wetten"
+            emoji = "✅"
+        else:
+            category = "🟢 OPTIMALES RISIKO"
+            recommendation = "Seltene Top-Wette - erhöhter Einsatz möglich"
             color = "green"
             score_text = "5/5"
+            emoji = "🎯"
         
         return {
-            'score': final_score,
+            'score': final_score_int,
             'score_text': score_text,
             'category': category,
             'recommendation': recommendation,
             'color': color,
+            'emoji': emoji,
             'details': {
                 'average_risk': round(avg_risk, 2),
                 'adjustments': round(adjustments, 2),
                 'mu_total_impact': mu_total,
                 'tki_impact': tki_combined,
                 'favorite_prob': best_1x2_prob,
-                'ppg_diff_abs': ppg_diff_abs
+                'ppg_diff_abs': ppg_diff_abs,
+                'best_odds': round(best_odds_value, 2),
+                'data_quality': f"{home_games}/{away_games} Spiele"
             }
         }
     
-    # Gesamt-Risiko berechnen
-    overall_risk = calculate_overall_risk(
+    # Gesamt-Risiko mit strengen Kriterien
+    overall_risk = calculate_overall_risk_strict(
         risk_1x2, risk_over, risk_under, risk_btts_yes, risk_btts_no,
-        best_1x2_prob, mu_total, tki_combined, ppg_diff
+        best_prob, mu_total, tki_combined, ppg_diff,
+        home_team.games, away_team.games
     )
     
     return {
         'overall': overall_risk,
         '1x2': {
-            'market': best_1x2_market,
-            'probability': best_1x2_prob,
-            'odds': best_1x2_odds,
+            'market': best_market,
+            'probability': best_prob,
+            'odds': best_odds,
             'risk_score': risk_1x2,
-            'risk_text': risk_description(risk_1x2)
+            'risk_text': strict_risk_description(risk_1x2),
+            'second_best_prob': second_best_prob,
+            'prob_dominance': best_prob - second_best_prob,
+            'ev': (best_prob / 100) * best_odds - 1
         },
         'over_under': {
             'over': {
                 'probability': prob_over,
                 'odds': odds_ou[0],
                 'risk_score': risk_over,
-                'risk_text': risk_description(risk_over)
+                'risk_text': strict_risk_description(risk_over),
+                'ev': (prob_over / 100) * odds_ou[0] - 1
             },
             'under': {
                 'probability': prob_under,
                 'odds': odds_ou[1],
                 'risk_score': risk_under,
-                'risk_text': risk_description(risk_under)
+                'risk_text': strict_risk_description(risk_under),
+                'ev': (prob_under / 100) * odds_ou[1] - 1
             }
         },
         'btts': {
@@ -302,27 +570,116 @@ def calculate_extended_risk_scores_v49(prob_1x2_home: float, prob_1x2_draw: floa
                 'probability': prob_btts_yes,
                 'odds': odds_btts[0],
                 'risk_score': risk_btts_yes,
-                'risk_text': risk_description(risk_btts_yes)
+                'risk_text': strict_risk_description(risk_btts_yes),
+                'ev': (prob_btts_yes / 100) * odds_btts[0] - 1
             },
             'no': {
                 'probability': prob_btts_no,
                 'odds': odds_btts[1],
                 'risk_score': risk_btts_no,
-                'risk_text': risk_description(risk_btts_no)
+                'risk_text': strict_risk_description(risk_btts_no),
+                'ev': (prob_btts_no / 100) * odds_btts[1] - 1
             }
+        },
+        'risk_factors': {
+            'mu_total': mu_total,
+            'tki_combined': tki_combined,
+            'ppg_diff': ppg_diff,
+            'home_games': home_team.games,
+            'away_games': away_team.games,
+            'avg_cs_rate': (home_team.cs_yes_ha + away_team.cs_yes_ha) / 2
         }
     }
 
-# ==================== v4.9 ANALYSE FUNKTION (UNVERÄNDERT) ====================
-def analyze_match_v49(match: MatchData) -> Dict:
-    """
-    v4.9 SMART-PRECISION LOGIK
+# ==================== RISIKO-VERTEILUNGS-STATISTIK ====================
+def display_risk_distribution(all_results):
+    """Zeigt Verteilung der Risiko-Scores an"""
     
-    NEU in v4.9:
-    - TKI-Krise deaktiviert BTTS-Dominanz-Killer
-    - FTS-Check nur bei PPG > 1.0 (nicht 0.5)
-    - Form-Boost bei starker Defensive reduziert
-    - TKI-Krise überschreibt Form-Malus
+    if not all_results:
+        return
+    
+    scores = []
+    for item in all_results:
+        if 'result' in item and 'extended_risk' in item['result']:
+            scores.append(item['result']['extended_risk']['overall']['score'])
+    
+    if not scores:
+        return
+    
+    # Verteilung berechnen
+    from collections import Counter
+    distribution = Counter(scores)
+    total = len(scores)
+    
+    st.markdown("---")
+    st.subheader("📈 Risiko-Score Verteilung")
+    st.caption("Zeigt wie viele Matches jedem Risiko-Level zugeordnet wurden")
+    
+    cols = st.columns(5)
+    colors = ['darkred', 'red', 'yellow', 'lightgreen', 'green']
+    labels = ['1/5 Extrem', '2/5 Hoch', '3/5 Moderat', '4/5 Gering', '5/5 Optimal']
+    
+    for i in range(1, 6):
+        count = distribution.get(i, 0)
+        percentage = (count / total) * 100 if total > 0 else 0
+        
+        with cols[i-1]:
+            st.metric(
+                label=labels[i-1],
+                value=f"{count}",
+                delta=f"{percentage:.1f}%",
+                delta_color="off"
+            )
+            
+            # Fortschrittsbalken
+            st.progress(min(percentage/100, 1.0))
+    
+    # Empfehlung basierend auf Verteilung
+    score_5_pct = (distribution.get(5, 0) / total * 100) if total > 0 else 0
+    score_4_pct = (distribution.get(4, 0) / total * 100) if total > 0 else 0
+    score_3_pct = (distribution.get(3, 0) / total * 100) if total > 0 else 0
+    
+    st.markdown("---")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("### 📊 Verteilungs-Analyse")
+        
+        if score_5_pct > 10:
+            st.warning(f"⚠️ **Zu viele 5/5 Bewertungen** ({score_5_pct:.1f}%) - Scoring könnte zu liberal sein!")
+        elif score_5_pct < 1 and total > 20:
+            st.info(f"ℹ️ Sehr wenige 5/5 Bewertungen ({score_5_pct:.1f}%) - Scoring ist sehr streng")
+        elif score_5_pct >= 2 and score_5_pct <= 5:
+            st.success(f"✅ Optimale 5/5 Verteilung ({score_5_pct:.1f}%) - Scoring funktioniert gut!")
+        
+        if score_3_pct > 75:
+            st.info("ℹ️ Sehr viele 3/5 Bewertungen - Die meisten Wetten sind moderat riskant")
+        elif score_3_pct < 50:
+            st.warning("⚠️ Wenige 3/5 Bewertungen - Ungewöhnliche Verteilung")
+    
+    with col2:
+        st.markdown("### 🎯 Ziel-Verteilung")
+        st.caption("""
+        **Ideal:**
+        - 5/5: 2-5%
+        - 4/5: 10-15%
+        - 3/5: 60-70%
+        - 2/5: 15-20%
+        - 1/5: 5-10%
+        """)
+
+# ==================== v4.11 ANALYSE FUNKTION ====================
+def analyze_match_v411(match: MatchData) -> Dict:
+    """
+    v4.11 OPTIMIZED SMART-PRECISION LOGIK
+    
+    OPTIMIERUNGEN in v4.11:
+    - Weniger aggressive Form-Faktoren (0.75 statt 0.70 etc.)
+    - Weniger aggressive Dominanz-Dämpfer
+    - TKI-Boost reduziert (0.25 statt 0.4)
+    - BTTS-Dämpfung weniger aggressiv
+    - Strengeres Risiko-Scoring
     """
     
     # DATEN-EXTRAKTION
@@ -363,49 +720,49 @@ def analyze_match_v49(match: MatchData) -> Dict:
     fts_h = match.home_team.fts_yes_ha
     fts_a = match.away_team.fts_yes_ha
     
-    # --- v4.9 SMART-PRECISION LOGIK ---
+    # --- v4.11 OPTIMIZED SMART-PRECISION LOGIK ---
     
     # 1. BASIS μ
     mu_h = (xg_ha[0] + s_c_ha[0]) / 2
     mu_a = (xg_ha[2] + s_c_ha[2]) / 2
     
-    # 2. FORM-FAKTOR
+    # 2. FORM-FAKTOR (optimiert)
     def calculate_form_factor(form_ppg, overall_ppg):
         if overall_ppg == 0:
             return 1.0
         form_ratio = form_ppg / overall_ppg
         
         if form_ratio < 0.4:
-            return 0.70
+            return 0.75  # v4.11: war 0.70 in v4.9
         elif form_ratio < 0.6:
-            return 0.85
+            return 0.88  # v4.11: war 0.85 in v4.9
         elif form_ratio > 1.5:
-            return 1.20
+            return 1.15  # v4.11: war 1.20 in v4.9
         elif form_ratio > 1.2:
-            return 1.10
+            return 1.08  # v4.11: war 1.10 in v4.9
         else:
             return 1.0
     
     form_factor_h = calculate_form_factor(form_ppg_h, ppg[0])
     form_factor_a = calculate_form_factor(form_ppg_a, ppg[1])
     
-    # 3. TKI BERECHNUNG (früh, für spätere Checks)
+    # 3. TKI BERECHNUNG
     tki_h = max(0, s_c_ha[1] - xg_ha[1])
     tki_a = max(0, s_c_ha[3] - xg_ha[3])
     tki_combined = tki_h + tki_a
     
-    # 4. NEU v4.9: TKI-KRISE ÜBERSCHREIBT FORM-MALUS
+    # 4. TKI-KRISE ÜBERSCHREIBT FORM-MALUS
     if tki_a > 1.0:  # Gast-Keeper in Krise
         if form_factor_h < 1.0:
-            form_factor_h = 1.0  # Ignoriere Heim-Form-Malus
+            form_factor_h = 1.0
     
     if tki_h > 1.0:  # Heim-Keeper in Krise
         if form_factor_a < 1.0:
-            form_factor_a = 1.0  # Ignoriere Gast-Form-Malus
+            form_factor_a = 1.0
     
-    # 5. NEU v4.9: DEFENSIVE CONTEXT CHECK (Form-Boost reduzieren)
+    # 5. DEFENSIVE CONTEXT CHECK
     if cs_rates[0] > 40 and form_factor_h > 1.0:
-        form_factor_h = 1.0 + (form_factor_h - 1.0) * 0.5  # Halbiere den Boost
+        form_factor_h = 1.0 + (form_factor_h - 1.0) * 0.5
     
     if cs_rates[1] > 40 and form_factor_a > 1.0:
         form_factor_a = 1.0 + (form_factor_a - 1.0) * 0.5
@@ -414,45 +771,45 @@ def analyze_match_v49(match: MatchData) -> Dict:
     mu_h *= form_factor_h
     mu_a *= form_factor_a
     
-    # 7. DOMINANZ-DÄMPFER (aggressiv)
+    # 7. DOMINANZ-DÄMPFER (weniger aggressiv)
     ppg_diff = ppg[0] - ppg[1]
     
     if ppg_diff > 1.5:
-        mu_a *= 0.45
-        mu_h *= 1.30
+        mu_a *= 0.65  # v4.11: war 0.45 in v4.9
+        mu_h *= 1.15  # v4.11: war 1.30 in v4.9
     elif ppg_diff > 1.2:
-        mu_a *= 0.55
-        mu_h *= 1.25
+        mu_a *= 0.75  # v4.11: war 0.55 in v4.9
+        mu_h *= 1.10  # v4.11: war 1.25 in v4.9
     elif ppg_diff > 0.8:
-        mu_a *= 0.65
-        mu_h *= 1.15
+        mu_a *= 0.85  # v4.11: war 0.65 in v4.9
+        mu_h *= 1.05  # v4.11: war 1.15 in v4.9
     
-    # 8. AUSWÄRTS-UNDERDOG BOOST
+    # 8. AUSWÄRTS-UNDERDOG BOOST (optimiert)
     if ppg_diff < -0.5:
-        mu_a *= 1.20
-        mu_h *= 0.80
+        mu_a *= 1.15  # v4.11: war 1.20 in v4.9
+        mu_h *= 0.85  # v4.11: war 0.80 in v4.9
     elif ppg_diff < -0.3:
-        mu_a *= 1.10
-        mu_h *= 0.90
+        mu_a *= 1.08  # v4.11: war 1.10 in v4.9
+        mu_h *= 0.92  # v4.11: war 0.90 in v4.9
     
-    # 9. CLEAN SHEET VALIDIERUNG (verschärft)
+    # 9. CLEAN SHEET VALIDIERUNG (optimiert)
     if cs_rates[0] > 50:
-        mu_a *= 0.70
+        mu_a *= 0.75  # v4.11: war 0.70 in v4.9
     elif cs_rates[0] > 40:
-        mu_a *= 0.80
+        mu_a *= 0.85  # v4.11: war 0.80 in v4.9
     elif cs_rates[0] > 30:
-        mu_a *= 0.85
+        mu_a *= 0.90  # v4.11: war 0.85 in v4.9
     
     if cs_rates[1] > 50:
-        mu_h *= 0.70
+        mu_h *= 0.75  # v4.11: war 0.70 in v4.9
     elif cs_rates[1] > 40:
-        mu_h *= 0.80
+        mu_h *= 0.85  # v4.11: war 0.80 in v4.9
     elif cs_rates[1] > 30:
-        mu_h *= 0.85
+        mu_h *= 0.90  # v4.11: war 0.85 in v4.9
     
-    # 10. TKI-BOOST
-    mu_h = mu_h * (1 + (tki_a * 0.4))
-    mu_a = mu_a * (1 + (tki_h * 0.4))
+    # 10. TKI-BOOST (reduziert)
+    mu_h = mu_h * (1 + (tki_a * 0.25))  # v4.11: war 0.4 in v4.9
+    mu_a = mu_a * (1 + (tki_h * 0.25))  # v4.11: war 0.4 in v4.9
     
     # 11. CONVERSION-RATE ADJUSTMENT
     def apply_conversion_adjustment(mu, conversion_rate):
@@ -485,28 +842,40 @@ def analyze_match_v49(match: MatchData) -> Dict:
             if p > max_p: 
                 max_p, score = p, (i, j)
     
-    # 13. BTTS-PRÄZISIONS-FILTER v4.9
+    # 13. BTTS-PRÄZISIONS-FILTER v4.11
+    mu_total_check = mu_h + mu_a
+    
+    # Bei torreichem Spiel: reduziere BTTS-Dämpfung
+    if mu_total_check > 3.5:
+        btts_torreich_faktor = 1.5
+    else:
+        btts_torreich_faktor = 1.0
+    
+    # Normale BTTS Logik
     if mu_h < 1.0 or mu_a < 1.0:
-        btts_p *= 0.8
+        btts_p *= 0.85  # v4.11: war 0.80 in v4.9
     
-    # NEU v4.9: DOMINANZ-KILLER (nur wenn KEINE TKI-Krise!)
-    if tki_combined < 0.8:  # Nur bei stabilen Defensiven
+    # DOMINANZ-KILLER (weniger aggressiv)
+    if tki_combined < 0.6:  # v4.11: war 0.8 in v4.9
         if ppg_diff > 1.0:
-            btts_p *= 0.60
+            btts_p *= 0.75  # v4.11: weniger aggressiv
         elif ppg_diff > 0.8:
-            btts_p *= 0.75
+            btts_p *= 0.85  # v4.11: weniger aggressiv
     
-    # NEU v4.9: FAILED TO SCORE CHECK (nur bei starker Dominanz)
-    if fts_a > 0.30 and ppg_diff > 1.0:  # GEÄNDERT von 0.5 auf 1.0
-        btts_p *= 0.70
-    if fts_h > 0.30 and ppg_diff < -1.0:  # GEÄNDERT von -0.5 auf -1.0
-        btts_p *= 0.70
+    # FAILED TO SCORE CHECK (verschärft)
+    if fts_a > 0.25 and ppg_diff > 1.2:  # v4.11: verschärft
+        btts_p *= 0.85  # v4.11: war 0.70 in v4.9
+    if fts_h > 0.25 and ppg_diff < -1.2:  # v4.11: verschärft
+        btts_p *= 0.85  # v4.11: war 0.70 in v4.9
+    
+    # Wende Torreich-Faktor an
+    btts_p *= btts_torreich_faktor
     
     # H2H Analyse
     h2h_stats = analyze_h2h(match.home_team, match.away_team, match.h2h_results)
     
-    # NEU: Erweitertes Risiko-Scoring
-    extended_risk = calculate_extended_risk_scores_v49(
+    # Strenges Risiko-Scoring
+    extended_risk = calculate_extended_risk_scores_strict(
         prob_1x2_home=wh * 100,
         prob_1x2_draw=dr * 100,
         prob_1x2_away=wa * 100,
@@ -519,10 +888,13 @@ def analyze_match_v49(match: MatchData) -> Dict:
         odds_btts=match.odds_btts,
         mu_total=mu_h + mu_a,
         tki_combined=tki_combined,
-        ppg_diff=ppg_diff
+        ppg_diff=ppg_diff,
+        home_team=match.home_team,
+        away_team=match.away_team
     )
     
-    return {
+    # Ergebnis-Dict erstellen
+    result = {
         'match_info': {
             'home': match.home_team.name,
             'away': match.away_team.name,
@@ -559,13 +931,29 @@ def analyze_match_v49(match: MatchData) -> Dict:
         },
         'scorelines': [(f"{score[0]}:{score[1]}", round(max_p * 100, 2))],
         'predicted_score': f"{score[0]}:{score[1]}",
-        'extended_risk': extended_risk,  # NEU: Erweitertes Risiko-Scoring
+        'extended_risk': extended_risk,
         'odds': {
             '1x2': match.odds_1x2,
             'ou25': match.odds_ou25,
             'btts': match.odds_btts
         }
     }
+    
+    # NEU: Vorhersage in Google Sheets speichern (mit robuster Fehlerbehandlung)
+    try:
+        save_prediction_to_sheets(
+            match_info=result['match_info'],
+            probabilities=result['probabilities'],
+            odds=result['odds'],
+            risk_score=result['extended_risk']['overall'],
+            predicted_score=result['predicted_score'],
+            mu_info=result['mu']
+        )
+    except Exception as e:
+        # Kein Fehler anzeigen, nur in Console loggen
+        print(f"Tracking-Fehler (nicht kritisch): {str(e)}")
+    
+    return result
 
 def analyze_h2h(home: TeamStats, away: TeamStats, h2h_data: List[H2HResult]) -> Dict:
     """Analysiert Head-to-Head Daten"""
@@ -625,14 +1013,126 @@ def analyze_h2h(home: TeamStats, away: TeamStats, h2h_data: List[H2HResult]) -> 
         'btts_percentage': btts_count / len(h2h_data)
     }
 
+# ==================== GOOGLE SHEETS TRACKING FUNKTION (ROBUST) ====================
+def save_prediction_to_sheets(match_info: Dict, probabilities: Dict, odds: Dict, 
+                             risk_score: Dict, predicted_score: str, mu_info: Dict):
+    """
+    Speichert Vorhersage in Google Sheets Tracking-Datei
+    ROBUST: Funktioniert mit und ohne tracking secrets
+    """
+    try:
+        # Prüfe ob tracking secrets existieren
+        if "tracking" not in st.secrets:
+            # Kein Tracking konfiguriert - nur im Debug-Modus zeigen
+            if st.session_state.get('debug_mode', False):
+                st.info("ℹ️ Tracking nicht konfiguriert (tracking section fehlt in secrets)")
+            return False
+        
+        tracking_secrets = st.secrets["tracking"]
+        
+        # Prüfe verschiedene mögliche sheet_id Namen
+        sheet_id = None
+        possible_keys = ['sheet_id', 'sheet_id_v411', 'sheet_id_v49', 'sheet_id_v48', 'sheet_id_v47']
+        
+        for key in possible_keys:
+            if key in tracking_secrets:
+                sheet_id = tracking_secrets[key]
+                break
+        
+        if not sheet_id:
+            if st.session_state.get('debug_mode', False):
+                st.warning("⚠️ Keine sheet_id in tracking secrets gefunden")
+            return False
+        
+        # Verbindung zu Google Sheets mit Schreibrechten
+        scope = ["https://www.googleapis.com/auth/spreadsheets"]
+        creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+        service = build('sheets', 'v4', credentials=creds)
+        
+        # Beste Over/Under Option
+        best_over_under = "Over 2.5" if probabilities['over_25'] >= (100 - probabilities['over_25']) else "Under 2.5"
+        prob_over_under = max(probabilities['over_25'], 100 - probabilities['over_25'])
+        odds_over_under = odds['ou25'][0] if best_over_under == "Over 2.5" else odds['ou25'][1]
+        
+        # Beste BTTS Option  
+        best_btts = "BTTS Yes" if probabilities['btts_yes'] >= probabilities['btts_no'] else "BTTS No"
+        prob_btts = max(probabilities['btts_yes'], probabilities['btts_no'])
+        odds_btts = odds['btts'][0] if best_btts == "BTTS Yes" else odds['btts'][1]
+        
+        # Beste 1X2 Option
+        probs_1x2 = [probabilities['home_win'], probabilities['draw'], probabilities['away_win']]
+        markets_1x2 = ['Heimsieg', 'Unentschieden', 'Auswärtssieg']
+        best_idx = probs_1x2.index(max(probs_1x2))
+        best_1x2 = markets_1x2[best_idx]
+        prob_1x2 = probs_1x2[best_idx]
+        odds_1x2_value = odds['1x2'][best_idx]
+        
+        # Daten vorbereiten
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        match_str = f"{match_info['home']} vs {match_info['away']}"
+        mu_total = mu_info.get('total', 0.0)
+        
+        # Version erkennen
+        current_file = os.path.basename(__file__)
+        if "4.11" in current_file or "v411" in current_file:
+            version = "v4.11"
+        elif "4.9" in current_file or "v49" in current_file:
+            version = "v4.9"
+        elif "4.8" in current_file or "v48" in current_file:
+            version = "v4.8"
+        elif "4.7" in current_file or "v47" in current_file:
+            version = "v4.7"
+        else:
+            version = "v4.x"
+        
+        values = [[
+            timestamp,                                  # A: Timestamp
+            version,                                    # B: Version
+            match_str,                                  # C: Match
+            predicted_score,                            # D: Predicted_Score
+            best_1x2,                                   # E: Predicted_1X2
+            f"{prob_1x2:.1f}%",                        # F: Probability_1X2
+            best_over_under,                            # G: Best_OverUnder
+            f"{prob_over_under:.1f}%",                 # H: Probability_OverUnder
+            f"{odds_over_under:.2f}",                  # I: Odds_OverUnder
+            best_btts,                                  # J: Best_BTTS
+            f"{prob_btts:.1f}%",                       # K: Probability_BTTS
+            f"{odds_btts:.2f}",                        # L: Odds_BTTS
+            f"{odds_1x2_value:.2f}",                   # M: Odds_1X2
+            str(risk_score['score']),                   # N: Risk_Score (1-5)
+            risk_score['category'],                     # O: Risk_Category
+            f"{mu_total:.2f}",                         # P: μ_Total
+            "PENDING"                                   # Q: Status
+        ]]
+        
+        # In Sheets schreiben
+        body = {'values': values}
+        result = service.spreadsheets().values().append(
+            spreadsheetId=sheet_id,
+            range="PREDICTIONS!A:Q",
+            valueInputOption="USER_ENTERED",
+            body=body
+        ).execute()
+        
+        # Erfolgsmeldung (nur im Debug-Modus)
+        if st.session_state.get('debug_mode', False):
+            st.success(f"✅ Vorhersage ({version}) in Tracking-Sheet gespeichert!")
+        
+        return True
+        
+    except Exception as e:
+        # Keine Fehlermeldung an Benutzer - nur in Console
+        print(f"⚠️ Tracking-Fehler (nicht kritisch): {str(e)}")
+        return False
+
 # ==================== OPTIMIERTE ANZEIGE FUNKTION ====================
-def display_results_v49(result):
+def display_results_v411(result):
     """Zeigt die Analyseergebnisse mit neuem Risiko-Scoring an"""
     st.header(f"🎯 {result['match_info']['home']} vs {result['match_info']['away']}")
     st.caption(f"📅 {result['match_info']['date']} | {result['match_info']['kickoff']} Uhr | {result['match_info']['competition']}")
     
     # Smart-Precision Info
-    st.subheader("🧠 SMART-PRECISION v4.9+")
+    st.subheader("🧠 SMART-PRECISION v4.11 OPTIMIZED")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Smart μ Home", f"{result['mu']['home']:.2f}")
@@ -659,7 +1159,7 @@ def display_results_v49(result):
     with col4:
         st.metric("Gast Form-PPG", f"{result['form']['away_ppg']:.2f}")
     
-    # NEU: ERWEITERTE RISIKO-ANALYSE
+    # ERWEITERTE RISIKO-ANALYSE
     st.subheader("⚠️ ERWEITERTE RISIKO-ANALYSE")
     
     # Gesamt-Risiko
@@ -711,7 +1211,6 @@ def display_results_v49(result):
     with col1:
         st.markdown("**🎯 1X2 WETTE**")
         risk_1x2 = result['extended_risk']['1x2']
-        # NEU: Score als Zahl + Text
         risk_display = f"{risk_1x2['risk_score']}/5 {risk_1x2['risk_text']}"
         st.metric(
             label=f"{risk_1x2['market']} ({risk_1x2['probability']:.1f}%)",
@@ -761,7 +1260,6 @@ def display_results_v49(result):
                 delta=risk_display_no,
                 delta_color="off"
             )
-    
     
     # Risiko-Details expander
     with st.expander("📋 RISIKO-FAKTOREN DETAILS"):
@@ -911,7 +1409,7 @@ def display_results_v49(result):
         )
         st.plotly_chart(fig_risk_overview, use_container_width=True)
 
-# ==================== ALERT-SYSTEM (UNVERÄNDERT) ====================
+# ==================== ALERT-SYSTEM ====================
 def check_alerts(mu_h: float, mu_a: float, tki_h: float, tki_a: float, 
                 ppg_diff: float, thresholds: Dict) -> List[Dict]:
     """Prüft ob Alarme ausgelöst werden"""
@@ -965,39 +1463,24 @@ def check_alerts(mu_h: float, mu_a: float, tki_h: float, tki_a: float,
 
 # ==================== GOOGLE SHEETS FUNKTIONEN ====================
 @st.cache_resource
-def connect_to_sheets():
-    scope = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+def connect_to_sheets(readonly=True):
+    """
+    Verbindung zu Google Sheets
+    readonly=True: Nur Leserechte
+    readonly=False: Lese- und Schreibrechte (für Tracking)
+    """
+    if readonly:
+        scope = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+    else:
+        scope = ["https://www.googleapis.com/auth/spreadsheets"]
     
-    try:
-        # Prüfe ob Base64 Secrets existieren
-        if 'gcp_service_account_b64' not in st.secrets:
-            st.error("❌ Google Sheets Credentials nicht gefunden")
-            st.info("Bitte Base64 Credentials in Streamlit Cloud Secrets einrichten")
-            return None
-        
-        # Base64 String aus Secrets dekodieren
-        import base64
-        import json
-        
-        creds_b64 = st.secrets["gcp_service_account_b64"]
-        creds_json = base64.b64decode(creds_b64).decode('utf-8')
-        creds_info = json.loads(creds_json)
-        
-        # Credentials erstellen
-        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-        service = build('sheets', 'v4', credentials=creds)
-        return service
-        
-    except Exception as e:
-        st.error(f"❌ Fehler bei Google Sheets Verbindung: {str(e)}")
-        import traceback
-        st.error(traceback.format_exc())
-        return None
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+    return build('sheets', 'v4', credentials=creds)
 
 @st.cache_data(ttl=300)
 def get_all_worksheets(sheet_url):
     try:
-        service = connect_to_sheets()
+        service = connect_to_sheets(readonly=True)
         spreadsheet_id = sheet_url.split('/d/')[1].split('/')[0]
         sheet_metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         sheets = sheet_metadata.get('sheets', [])
@@ -1008,7 +1491,7 @@ def get_all_worksheets(sheet_url):
 
 def read_worksheet_data(sheet_url, sheet_name):
     try:
-        service = connect_to_sheets()
+        service = connect_to_sheets(readonly=True)
         spreadsheet_id = sheet_url.split('/d/')[1].split('/')[0]
         range_name = f"'{sheet_name}'!A:Z"
         result = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=range_name).execute()
@@ -1300,201 +1783,295 @@ class DataParser:
 
 # ==================== HAUPT-APP ====================
 def main():
-    st.title("⚽ SPORTWETTEN-PROGNOSEMODELL v4.9+")
-    st.markdown("### v4.9+ PRECISION+ mit **ERWEITERTEM RISIKO-SCORING (1-5)**")
-    st.markdown("**Neu:** Gesamt-Risiko 1-5 + individuelle Wetten-Risikos")
+    st.title("⚽ SPORTWETTEN-PROGNOSEMODELL v4.11 OPTIMIZED")
+    st.markdown("### v4.11 PRECISION+ mit **STRENGEM RISIKO-SCORING (1-5)**")
+    st.markdown("**Neu:** Daten-Validierung + Risiko-Verteilungs-Statistik + Google Sheets Tracking")
     st.markdown("---")
     
-    # ✅ DEINE FESTE SHEETS URL - AUTOMATISCHER START
+    # Debug-Modus Checkbox
+    with st.sidebar:
+        if st.checkbox("🔧 Debug-Modus", help="Zeigt Tracking-Informationen"):
+            st.session_state['debug_mode'] = True
+        else:
+            st.session_state['debug_mode'] = False
+    
+    st.subheader("📊 Schritt 1: Google Sheets Datei")
+    # ⚠️ WICHTIG: Deine feste Sheets URL beibehalten!
     SHEET_URL = "https://docs.google.com/spreadsheets/d/15V0TAf25LVekVMag7lklomQKNCj-fpl2POwWdVncN_A/edit"
     
-    # Sofortige Anzeige der aktiven Datei
-    st.info(f"📁 **Aktive Analyse-Datei:** [Google Sheets Link]({SHEET_URL})")
-    
-    # Automatisch Matches laden
-    with st.spinner("📥 Lade Matches aus Google Sheets..."):
-        worksheets = get_all_worksheets(SHEET_URL)
-    
-    if not worksheets:
-        st.error("❌ Keine Matches gefunden oder keine Verbindung möglich")
-        st.info("Bitte überprüfe:")
-        st.markdown("""
-        1. **Google Sheets Datei** ist geteilt mit: `sportwetten-prognose@sportwetten-prognose.iam.gserviceaccount.com`
-        2. **Internetverbindung** ist vorhanden
-        3. **Datei** enthält Match-Daten im richtigen Format
-        """)
-        return
-    
-    st.success(f"✅ **{len(worksheets)} Matches geladen!**")
-    st.markdown("---")
-    
-    # Match-Auswahl
-    st.subheader("🎯 Schritt 1: Match auswählen")
-    
-    # Suchfeld für Matches
-    search_term = st.text_input(
-        "🔍 Match suchen (Teamname oder Liga):",
-        placeholder="z.B. 'Bayern' oder 'Bundesliga'",
-        help="Suche nach Teamnamen oder Wettbewerben",
-        key="match_search"
+    sheet_url = st.text_input(
+        "Google Sheets URL:",
+        value=SHEET_URL,  # Deine feste URL als Default
+        placeholder="https://docs.google.com/spreadsheets/d/...",
+        help="URL deiner 'Perplexity' Datei",
+        key="sheet_url_input"
     )
     
-    # Filtere Worksheets basierend auf Suchbegriff
-    if search_term:
-        filtered_worksheets = {
-            k: v for k, v in worksheets.items() 
-            if search_term.lower() in k.lower()
-        }
-        if filtered_worksheets:
-            st.info(f"📋 {len(filtered_worksheets)} von {len(worksheets)} Matches passen zur Suche")
-        else:
-            st.warning("Keine Matches gefunden, die der Suche entsprechen.")
-            filtered_worksheets = worksheets
-    else:
-        filtered_worksheets = worksheets
-    
-    # Match-Auswahl Dropdown
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        if filtered_worksheets:
-            selected_worksheet = st.selectbox(
-                "Wähle Match:", 
-                list(filtered_worksheets.keys()), 
-                key="worksheet_select",
-                help="Wähle ein Match für die detaillierte Analyse"
+    if sheet_url:
+        st.markdown("---")
+        st.subheader("📋 Schritt 2: Match auswählen")
+        
+        with st.spinner("📥 Lade Tabellenblätter..."):
+            worksheets = get_all_worksheets(sheet_url)
+        
+        if worksheets:
+            st.success(f"✅ {len(worksheets)} Matches gefunden!")
+            
+            # Suchfeld für Matches
+            st.markdown("**🔍 Match suchen:**")
+            search_term = st.text_input(
+                "Suche nach Teamname oder Liga:",
+                placeholder="z.B. 'Bayern' oder 'Bundesliga'",
+                help="Suche nach Teamnamen oder Wettbewerben",
+                key="match_search"
             )
-        else:
-            st.warning("Keine Matches verfügbar")
-            selected_worksheet = None
             
-    with col2:
-        st.markdown("**Oder alle analysieren:**")
-        analyze_all = st.checkbox("Alle Matches", key="analyze_all_check")
-    
-    # Daten-Vorschau (optional)
-    if selected_worksheet and st.checkbox("👁️ Daten-Vorschau anzeigen", key="show_preview"):
-        with st.expander("📄 Rohdaten-Vorschau"):
-            preview_data = read_worksheet_data(SHEET_URL, selected_worksheet)
-            if preview_data:
-                st.text(preview_data[:1000] + "\n..." if len(preview_data) > 1000 else preview_data)
-    
-    st.markdown("---")
-    st.subheader("⚙️ Schritt 2: Analyse starten")
-    
-    # Analyse-Button für einzelnes Match
-    if selected_worksheet and not analyze_all:
-        if st.button(f"🔄 '{selected_worksheet}' analysieren", type="primary", use_container_width=True):
-            with st.spinner(f"⚙️ Analysiere {selected_worksheet}..."):
-                match_data = read_worksheet_data(SHEET_URL, selected_worksheet)
-                
-                if match_data:
-                    try:
-                        parser = DataParser()
-                        match = parser.parse(match_data)
-                        result = analyze_match_v49(match)
+            # Filtere die Worksheets basierend auf Suchbegriff
+            if search_term:
+                filtered_worksheets = {
+                    k: v for k, v in worksheets.items() 
+                    if search_term.lower() in k.lower()
+                }
+                st.info(f"📋 {len(filtered_worksheets)} von {len(worksheets)} Matches passen zur Suche")
+            else:
+                filtered_worksheets = worksheets
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                if filtered_worksheets:
+                    selected_worksheet = st.selectbox(
+                        "Wähle Match:", 
+                        list(filtered_worksheets.keys()), 
+                        key="worksheet_select",
+                        help="Wähle ein Match aus der gefilterten Liste"
+                    )
+                else:
+                    st.warning("Keine Matches gefunden, die der Suche entsprechen.")
+                    selected_worksheet = None
+                    
+            with col2:
+                st.markdown("**Oder analysiere alle:**")
+                analyze_all = st.checkbox("Alle Matches", key="analyze_all_check")
+                if search_term and analyze_all:
+                    st.info(f"⚠️ Suchfilter wird ignoriert, alle {len(worksheets)} Matches werden analysiert")
+            
+            if selected_worksheet and not analyze_all:
+                with st.expander("👁️ Daten-Vorschau"):
+                    preview_data = read_worksheet_data(sheet_url, selected_worksheet)
+                    if preview_data:
+                        st.text(preview_data[:800] + "\n...")
+            
+            st.markdown("---")
+            st.subheader("⚙️ Schritt 3: Analyse")
+            
+            if analyze_all:
+                if st.button("🔄 ALLE Matches analysieren", type="primary", use_container_width=True, key="analyze_all_btn"):
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    all_results = []
+                    failed_matches = []  # Tracking für Matches mit fehlenden Daten
+                    
+                    for i, (sheet_name, _) in enumerate(worksheets.items()):
+                        status_text.text(f"📊 Analysiere {sheet_name}... ({i+1}/{len(worksheets)})")
+                        progress_bar.progress((i + 1) / len(worksheets))
                         
-                        st.success("✅ Analyse abgeschlossen!")
+                        match_data = read_worksheet_data(sheet_url, sheet_name)
+                        if match_data:
+                            try:
+                                parser = DataParser()
+                                match = parser.parse(match_data)
+                                
+                                # ==================== DATEN-VALIDIERUNG ====================
+                                is_valid, missing_fields = validate_match_data(match)
+                                
+                                if not is_valid:
+                                    # Match hat fehlende Daten - überspringen
+                                    failed_matches.append({
+                                        'sheet_name': sheet_name,
+                                        'missing_count': len(missing_fields),
+                                        'missing_fields': missing_fields
+                                    })
+                                else:
+                                    # Alle Daten vorhanden - analysieren
+                                    result = analyze_match_v411(match)
+                                    all_results.append({'sheet_name': sheet_name, 'result': result})
+                                    
+                            except Exception as e:
+                                failed_matches.append({
+                                    'sheet_name': sheet_name,
+                                    'missing_count': 0,
+                                    'missing_fields': [f"Parsing-Fehler: {str(e)}"]
+                                })
+                    
+                    status_text.text("✅ Alle Analysen abgeschlossen!")
+                    progress_bar.empty()
+                    
+                    # Zeige Zusammenfassung
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("✅ Erfolgreich analysiert", len(all_results))
+                    with col2:
+                        st.metric("⚠️ Fehlende Daten", len(failed_matches))
+                    with col3:
+                        st.metric("📊 Gesamt", len(worksheets))
+                    
+                    # Zeige fehlerhafte Matches falls vorhanden
+                    if failed_matches:
                         st.markdown("---")
-                        display_results_v49(result)
+                        st.warning(f"⚠️ **{len(failed_matches)} Matches konnten nicht analysiert werden (fehlende Daten)**")
                         
-                    except Exception as e:
-                        st.error(f"❌ Fehler bei der Analyse: {e}")
-                        st.info("Stelle sicher, dass die Tabellendaten korrekt formatiert sind.")
-    
-    # Analyse für alle Matches
-    elif analyze_all:
-        if st.button("🔄 ALLE Matches analysieren", type="primary", use_container_width=True):
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            all_results = []
+                        with st.expander(f"📋 Details zu {len(failed_matches)} übersprungenen Matches"):
+                            for failed in failed_matches:
+                                st.markdown(f"### 🚫 {failed['sheet_name']}")
+                                if failed['missing_count'] > 0:
+                                    st.caption(f"Fehlende Datenpunkte: **{failed['missing_count']}**")
+                                    
+                                    # Zeige erste 10 fehlende Felder
+                                    fields_to_show = failed['missing_fields'][:10]
+                                    for field in fields_to_show:
+                                        st.markdown(f"- {field}")
+                                    
+                                    if len(failed['missing_fields']) > 10:
+                                        st.caption(f"... und {len(failed['missing_fields']) - 10} weitere")
+                                else:
+                                    st.markdown(f"- {failed['missing_fields'][0]}")
+                                
+                                st.markdown("---")
+                    
+                    # Übersicht aller erfolgreichen Analysen
+                    if all_results:
+                        st.markdown("---")
+                        st.header("📊 ÜBERSICHT ALLER ANALYSIERTEN MATCHES")
+                        
+                        overview_data = []
+                        for item in all_results:
+                            r = item['result']
+                            risk = r['extended_risk']['overall']
+                            
+                            overview_data.append({
+                                'Match': f"{r['match_info']['home']} vs {r['match_info']['away']}",
+                                'μ_Total': f"{r['mu']['total']:.2f}",
+                                'Gesamt-Risiko': risk['score_text'],
+                                '1X2 Risiko': r['extended_risk']['1x2']['risk_text'],
+                                'Over 2.5': f"{r['probabilities']['over_25']:.1f}%",
+                                'BTTS Ja': f"{r['probabilities']['btts_yes']:.1f}%",
+                                'Vorhersage': r['predicted_score']
+                            })
+                        
+                        df_overview = pd.DataFrame(overview_data)
+                        st.dataframe(df_overview, use_container_width=True, hide_index=True)
+                        
+                        # RISIKO-VERTEILUNGS-STATISTIK
+                        display_risk_distribution(all_results)
+                        
+                        # Detailansichten
+                        st.markdown("---")
+                        st.header("📋 DETAILLIERTE ANALYSEN")
+                        for item in all_results:
+                            with st.expander(f"🎯 {item['sheet_name']} - {item['result']['predicted_score']}", expanded=False):
+                                display_results_v411(item['result'])
+                    else:
+                        st.error("❌ Keine Matches konnten erfolgreich analysiert werden. Alle haben fehlende Daten.")
             
-            for i, (sheet_name, _) in enumerate(worksheets.items()):
-                status_text.text(f"📊 Analysiere {sheet_name}... ({i+1}/{len(worksheets)})")
-                progress_bar.progress((i + 1) / len(worksheets))
-                
-                match_data = read_worksheet_data(SHEET_URL, sheet_name)
-                if match_data:
-                    try:
-                        parser = DataParser()
-                        match = parser.parse(match_data)
-                        result = analyze_match_v49(match)
-                        all_results.append({'sheet_name': sheet_name, 'result': result})
-                    except Exception as e:
-                        st.error(f"❌ Fehler bei {sheet_name}: {e}")
-            
-            status_text.text("✅ Alle Analysen abgeschlossen!")
-            progress_bar.empty()
-            
-            # Übersicht aller Matches
-            st.markdown("---")
-            st.header("📊 ÜBERSICHT ALLER MATCHES")
-            
-            overview_data = []
-            for item in all_results:
-                r = item['result']
-                risk = r['extended_risk']['overall']
-                
-                overview_data.append({
-                    'Match': f"{r['match_info']['home']} vs {r['match_info']['away']}",
-                    'μ_Total': f"{r['mu']['total']:.2f}",
-                    'Gesamt-Risiko': risk['score_text'],
-                    '1X2 Risiko': r['extended_risk']['1x2']['risk_text'],
-                    'Over 2.5': f"{r['probabilities']['over_25']:.1f}%",
-                    'BTTS Ja': f"{r['probabilities']['btts_yes']:.1f}%",
-                    'Vorhersage': r['predicted_score']
-                })
-            
-            df_overview = pd.DataFrame(overview_data)
-            st.dataframe(df_overview, use_container_width=True, hide_index=True)
-            
-            # Detailansichten
-            st.markdown("---")
-            st.header("📋 DETAILLIERTE ANALYSEN")
-            for item in all_results:
-                with st.expander(f"🎯 {item['sheet_name']} - {item['result']['predicted_score']}", expanded=False):
-                    display_results_v49(item['result'])
-    
-    # Falls nichts ausgewählt
-    else:
-        st.info("ℹ️ Bitte wähle ein Match aus oder aktiviere 'Alle Matches'")
+            elif selected_worksheet:
+                if st.button(f"🔄 '{selected_worksheet}' analysieren", type="primary", use_container_width=True, 
+                           key=f"analyze_single_{selected_worksheet}"):
+                    with st.spinner(f"⚙️ Analysiere {selected_worksheet}..."):
+                        match_data = read_worksheet_data(sheet_url, selected_worksheet)
+                        
+                        if match_data:
+                            try:
+                                parser = DataParser()
+                                match = parser.parse(match_data)
+                                
+                                # ==================== DATEN-VALIDIERUNG ====================
+                                is_valid, missing_fields = validate_match_data(match)
+                                
+                                if not is_valid:
+                                    st.error("⚠️ **FEHLENDE DATENPUNKTE ERKANNT!**")
+                                    st.warning(f"Es fehlen **{len(missing_fields)}** kritische Datenpunkte. Analyse kann nicht durchgeführt werden.")
+                                    
+                                    st.markdown("### 📋 Folgende Daten fehlen:")
+                                    
+                                    # Gruppiere fehlende Felder nach Team
+                                    heim_missing = [f for f in missing_fields if f.startswith("HEIM:")]
+                                    away_missing = [f for f in missing_fields if f.startswith("AUSWÄRTS:")]
+                                    other_missing = [f for f in missing_fields if not (f.startswith("HEIM:") or f.startswith("AUSWÄRTS:"))]
+                                    
+                                    if heim_missing:
+                                        st.markdown("#### 🏠 Heimteam:")
+                                        for field in heim_missing:
+                                            st.markdown(f"- {field.replace('HEIM: ', '')}")
+                                    
+                                    if away_missing:
+                                        st.markdown("#### ✈️ Auswärtsteam:")
+                                        for field in away_missing:
+                                            st.markdown(f"- {field.replace('AUSWÄRTS: ', '')}")
+                                    
+                                    if other_missing:
+                                        st.markdown("#### ⚽ Match-Informationen:")
+                                        for field in other_missing:
+                                            st.markdown(f"- {field}")
+                                    
+                                    st.info("💡 **Tipp:** Überprüfe deinen Scraper und stelle sicher, dass alle Daten korrekt in Google Sheets eingetragen wurden.")
+                                    
+                                else:
+                                    # Alle Daten vorhanden - Analyse durchführen
+                                    result = analyze_match_v411(match)
+                                    
+                                    st.success("✅ Analyse abgeschlossen!")
+                                    st.markdown("---")
+                                    display_results_v411(result)
+                                
+                            except Exception as e:
+                                st.error(f"❌ Fehler bei der Analyse: {e}")
+                                st.info("Stelle sicher, dass die Tabellendaten korrekt formatiert sind.")
 
 # ==================== SIDEBAR ====================
 with st.sidebar:
-    st.header("⚙️ v4.9+ Einstellungen & Tools")
+    st.header("⚙️ v4.11 Einstellungen & Tools")
     
-    st.subheader("🆕 v4.9+ Changelog")
+    st.subheader("🆕 v4.11 Changelog")
     with st.expander("Was ist neu?"):
         st.markdown("""
-        **🚀 NEUES RISIKO-SCORING SYSTEM:**
+        **🚀 OPTIMIERTES SYSTEM:**
         
-        **Gesamt-Risiko (1-5):**
-        - 1 = 🔴 Sehr hohes Risiko
-        - 2 = 🔴 Hohes Risiko
-        - 3 = 🟡 Moderates Risiko  
-        - 4 = 🟢 Geringes Risiko
-        - 5 = 🟢 Sehr geringes Risiko
+        **1. STRENGES RISIKO-SCORING:**
+        - Weniger 5/5 Bewertungen (nur 2-5%)
+        - Realistischere Risiko-Einschätzung
+        - Berücksichtigt Datenqualität
         
-        **Individuelle Wetten-Risikos:**
-        - ✅ 1X2: Risiko-Score basierend auf EV
-        - ✅ Over/Under: Getrennte Scores für Over/Under
-        - ✅ BTTS: Getrennte Scores für Ja/Nein
+        **2. DATEN-VALIDIERUNG:**
+        - Prüft vor Analyse alle kritischen Datenpunkte
+        - Zeigt fehlende Daten an
+        - Verhindert fehlerhafte Analysen
         
-        **Faktoren im Gesamt-Risiko:**
-        - μ-Total (Tore erwartet)
-        - TKI (Torwart-Krise)
-        - PPG Differenz (Dominanz)
-        - Wahrscheinlichkeit (Favorit)
+        **3. RISIKO-VERTEILUNGS-STATISTIK:**
+        - Zeigt wie viele Matches welchem Risiko zugeordnet werden
+        - Verteilungskontrolle für Scoring-System
+        
+        **4. GOOGLE SHEETS TRACKING:**
+        - Automatisches Speichern von Vorhersagen
+        - Funktioniert mit/ohne Tracking-Secrets
+        - Robust gegen Fehler
+        
+        **5. OPTIMIERTE LOGIK:**
+        - Weniger aggressive Form-Faktoren
+        - Reduzierte Dominanz-Dämpfer
+        - Verbesserte BTTS-Berechnung
         """)
     
     st.markdown("---")
     
     st.subheader("📊 Google Sheets Info")
     try:
-        st.success("✅ Verbunden")
-        st.caption(f"Aktive Datei geladen")
-        st.caption("https://docs.google.com/spreadsheets/d/15V0TAf25LVekVMag7lklomQKNCj-fpl2POwWdVncN_A/edit")
+        if 'sheet_url' in st.session_state and sheet_url and 'worksheets' in locals() and worksheets:
+            st.success("✅ Verbunden")
+            st.caption(f"{len(worksheets)} Tabellenblätter")
+        else:
+            st.info("ℹ️ Bitte Google Sheets URL eingeben")
     except:
-        st.info("ℹ️ Automatische Verbindung aktiv")
+        st.info("ℹ️ Bitte Google Sheets URL eingeben")
     
     st.markdown("---")
     
@@ -1526,44 +2103,71 @@ with st.sidebar:
     
     st.markdown("---")
     
-    st.subheader("ℹ️ Risiko-Score Legende")
+    st.subheader("ℹ️ Strenges Risiko-Scoring")
     st.caption("""
-    **1/5 - 🔴 SEHR RISIKANT:**
-    • Expected Value < -25%
-    • Extrem unvorhersehbares Spiel
-    • Nur für Spekulanten
+    **🎯 OPTIMIERTES SYSTEM:**
+    Weniger 5/5 Bewertungen, realistischere Einschätzung
     
-    **2/5 - 🔴 RISIKANT:**
-    • Expected Value -10% bis -25%
-    • Erhöhte Unvorhersehbarkeit
+    **1/5 - ☠️ EXTREM RISIKANT:**
+    • EV < -15% (strenger als vorher)
+    • Vermeiden - sehr spekulativ
+    • Nur 5-10% aller Matches
+    
+    **2/5 - ⚠️ HOHES RISIKO:**
+    • EV -5% bis -15%
     • Nur für erfahrene Wettende
+    • 15-20% aller Matches
     
-    **3/5 - 🟡 NEUTRAL:**
-    • Expected Value -10% bis +5%
-    • Standard-Risiko
-    • Mit normaler Vorsicht
+    **3/5 - 📊 MODERATES RISIKO:**
+    • EV -5% bis +10% (strenger)
+    • Standard-Wetten, normale Vorsicht
+    • 60-70% aller Matches
     
-    **4/5 - 🟢 SICHER:**
-    • Expected Value +5% bis +15%
-    • Solide Wettmöglichkeit
-    • Gute Basis für Wetten
+    **4/5 - ✅ GERINGES RISIKO:**
+    • EV +10% bis +20% (höher als vorher)
+    • Gute Wettmöglichkeit
+    • 10-15% aller Matches
     
-    **5/5 - 🟢 SEHR SICHER:**
-    • Expected Value > +15%
-    • Sehr gute Wettmöglichkeit
-    • Empfohlene Basiswette
+    **5/5 - 🎯 OPTIMALES RISIKO:**
+    • EV > +20% + hohe Dominanz
+    • Seltene Top-Wetten (nur 2-5%)
+    • Erhöhter Einsatz möglich
+    
+    **Zusätzliche Faktoren:**
+    • Datenqualität (Spiele)
+    • μ-Total, TKI, PPG-Differenz
+    • Quoten-Value, Prob-Dominanz
     """)
     
-    # NEU: Schnellsuche in Sidebar
+    # NEU: Tracking Info
     st.markdown("---")
-    st.subheader("🔍 Schnellsuche Tipps")
-    st.caption("""
-    **Suche nach:**
-    • Teamnamen (z.B. "Bayern", "Real")
-    • Ligen (z.B. "Bundesliga", "Premier")
-    • Datum (z.B. "2024", "Samstag")
-    • Kombinationen (z.B. "Bayern Bundesliga")
-    """)
+    st.subheader("📈 Tracking Status")
+    
+    # Prüfe ob Tracking konfiguriert ist
+    if "tracking" in st.secrets:
+        tracking_secrets = st.secrets["tracking"]
+        sheet_id_found = False
+        
+        for key in ['sheet_id', 'sheet_id_v411', 'sheet_id_v49', 'sheet_id_v48', 'sheet_id_v47']:
+            if key in tracking_secrets:
+                sheet_id_found = True
+                st.success(f"✅ Tracking aktiv ({key})")
+                break
+        
+        if not sheet_id_found:
+            st.warning("⚠️ Tracking konfiguriert, aber keine sheet_id gefunden")
+    else:
+        st.info("ℹ️ Tracking nicht konfiguriert")
+        st.caption("Füge 'tracking' section zu Streamlit Secrets hinzu")
+    
+    # NEU: Debug-Modus Toggle
+    st.markdown("---")
+    if st.session_state.get('debug_mode', False):
+        st.success("🔧 Debug-Modus aktiv")
+    else:
+        st.info("ℹ️ Debug-Modus inaktiv")
+    
+    st.caption("Debug-Modus zeigt Tracking-Informationen")
 
 if __name__ == "__main__":
     main()
