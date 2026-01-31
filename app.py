@@ -3771,7 +3771,7 @@ def get_all_worksheets(sheet_url):
         return None
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def read_worksheet_data(sheet_url, sheet_name):
     try:
         service = connect_to_sheets(readonly=True)
