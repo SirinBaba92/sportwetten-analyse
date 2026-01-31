@@ -1447,8 +1447,8 @@ def save_extended_match_data(extended_data: ExtendedMatchData):
         service = connect_to_sheets(readonly=False)
         if service is None:
             return {
-    "success": False,
-        "message": "Keine Verbindung zu Google Sheets"}
+                "success": False,
+                "message": "Keine Verbindung zu Google Sheets"}
 
         sheet_name = "EXTENDED_DATA"
 
@@ -3771,7 +3771,7 @@ def get_all_worksheets(sheet_url):
         return None
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def read_worksheet_data(sheet_url, sheet_name):
     try:
         service = connect_to_sheets(readonly=True)
