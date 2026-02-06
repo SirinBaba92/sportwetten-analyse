@@ -4946,7 +4946,8 @@ def show_sidebar():
 
         col_s1, col_s2 = st.columns(2)
         with col_s1:
-            st.metric("Aktuelle Bankroll", f"€{bankroll:,.2f}", delta="0.0%")
+            current_bankroll = st.session_state.risk_management["bankroll"]
+            st.metric("Aktuelle Bankroll", f"€{current_bankroll:,.2f}", delta="0.0%")
 
         with col_s2:
             # Berechne Performance aus gespeicherten Wetten
