@@ -4952,19 +4952,6 @@ def main():
 
                 day_counter += 1
 
-# Selectbox nur zeigen, wenn noch nichts gewählt ist ODER Auswahl ungültig ist
-            day = st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
-            st.session_state.selected_day = day
-        else:
-            day = selected
-
-        matches = list_match_tabs_for_day(date_to_sheet_id[day])
-        st.write("Matches:", matches)
-
-    if matches:
-        match_name = st.selectbox("Match auswählen", matches)
-        st.write("Ausgewählt:", match_name)
-    
     # Tab-Layout für verschiedene Funktionen
     tab1, tab2, tab3, tab4 = st.tabs(
         ["📊 Match-Analyse", "🧠 ML-Training", "📚 Trainingsdaten", "📈 Statistiken"])
