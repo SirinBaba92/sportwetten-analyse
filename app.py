@@ -4464,20 +4464,20 @@ def show_sidebar():
         st.markdown("---")
         st.subheader("📊 Google Sheets Info")
 
-        sheet_url = "https://docs.google.com/spreadsheets/d/15V0TAf25LVekVMag7lklomQKNCj-fpl2POwWdVncN_A/edit?gid=576457136#gid=576457136"
-
         try:
             worksheets = get_all_worksheets(sheet_url)
             if worksheets:
                 st.success("✅ Verbunden")
                 st.caption(f"{len(worksheets)} Tabellenblätter")
+                match_names = list(worksheets.keys()) if worksheets else []
+                match_names_sorted = match_names  # bleibt in Sheet-Reihenfolge (so wie keys geliefert werden)
 
                 # Zeige letzte Aktualisierung
                 try:
                     service = connect_to_sheets(readonly=True)
                     if service:
                         result = service.spreadsheets().values().get(
-                            spreadsheetId=sheet_id,
+                            spreadsheetId=spreadsheet_id,
                             range="PREDICTIONS!A:A"
                         ).execute()
                         row_count = len(result.get('values', [])
