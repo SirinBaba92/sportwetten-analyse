@@ -4917,8 +4917,9 @@ def main():
     /* Größere Button-Flächen für den Kalender */
     div[data-testid="column"] button {
     width: 100%;
-    height: 2.8rem;
-    font-size: 1rem;
+    height: 3.2rem;
+    font-size: 1.25rem;
+    font-weight: 600;
     padding: 0;
     }
     </style>
