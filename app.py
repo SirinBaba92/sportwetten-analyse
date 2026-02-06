@@ -4922,6 +4922,9 @@ def main():
     first_weekday = month_start.weekday()  # Mo=0
     day_counter = 1
 
+    selected_day = st.session_state.get("selected_day")
+    selected_dt = parse_date(selected_day) if selected_day else None
+
     for week in range(6):
         cols = st.columns(7)
         for i in range(7):
@@ -4931,8 +4934,12 @@ def main():
                 cols[i].markdown(" ")
             else:
                 if day_counter in available_in_month:
-                    if cols[i].button(str(day_counter), key=f"cal_{m.year}_{m.month}_{day_counter}"):
-                        st.session_state.selected_day = f"{day_counter:02d}.{m.month:02d}.{m.year}"
+                    is_selected = selected_dt and (selected_dt.year == m.year and selected_dt.month == m.month and selected_dt.day == day_counter)
+                    label = f"✅ {day_counter}" if is_selected else str(day_counter)
+
+                if cols[i].button(label, key=f"cal_{m.year}_{m.month}_{day_counter}"):
+                    st.session_state.selected_day = f"{day_counter:02d}.{m.month:02d}.{m.year}"
+
                 else:
                     cols[i].markdown(
                         f"<span style='color:#999'>{day_counter}</span>",
