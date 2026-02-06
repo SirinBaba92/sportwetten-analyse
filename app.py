@@ -4792,9 +4792,9 @@ def main():
     st.info(f"📅 Gefundene Tagesdateien: {len(date_to_sheet_id)}")
 
     if date_to_sheet_id:
-    day = st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
-    matches = list_match_tabs_for_day(date_to_sheet_id[day])
-    st.write("Matches:", matches)
+        day = st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
+        matches = list_match_tabs_for_day(date_to_sheet_id[day])
+        st.write("Matches:", matches)
 
 
 
