@@ -4952,11 +4952,6 @@ def main():
 
                 day_counter += 1
 
-
-# --- Dein Test-Flow (vorerst bleibt er) ---
-    if date_to_sheet_id:
-        selected = st.session_state.get("selected_day")
-
 # Selectbox nur zeigen, wenn noch nichts gewählt ist ODER Auswahl ungültig ist
         if (not selected) or (selected not in date_to_sheet_id):
             day = st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
@@ -4976,7 +4971,22 @@ def main():
         ["📊 Match-Analyse", "🧠 ML-Training", "📚 Trainingsdaten", "📈 Statistiken"])
 
     with tab1:
-        st.subheader("📊 Schritt 1: Google Sheets Datei")
+# Kalender-Auswahl übernehmen
+        selected_day = st.session_state.get("selected_day")
+
+        if not date_to_sheet_id:
+            st.warning("⚠️ Keine Tagesdateien im Ordner gefunden.")
+            st.stop()
+
+        if (not selected_day) or (selected_day not in date_to_sheet_id):
+            st.warning("⚠️ Bitte wähle oben im Kalender einen Tag mit Daten.")
+            st.stop()
+
+        spreadsheet_id = date_to_sheet_id[selected_day]
+        sheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
+
+        st.info(f"📎 Tagesdatei: {selected_day} — [Link]({sheet_url})")
+
 
         if not date_to_sheet_id:
             st.warning("⚠️ Keine Tagesdateien im Ordner gefunden.")
