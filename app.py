@@ -4953,7 +4953,6 @@ def main():
                 day_counter += 1
 
 # Selectbox nur zeigen, wenn noch nichts gewählt ist ODER Auswahl ungültig ist
-        if (not selected) or (selected not in date_to_sheet_id):
             day = st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
             st.session_state.selected_day = day
         else:
