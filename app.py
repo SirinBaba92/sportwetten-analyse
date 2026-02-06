@@ -4922,7 +4922,12 @@ def main():
 
 # --- Dein Test-Flow (vorerst bleibt er) ---
     if date_to_sheet_id:
-        day = st.session_state.get("selected_day") or st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
+        fallback_day = st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
+        chosen = st.session_state.get("selected_day") or fallback_day
+
+# Falls selected_day nicht (mehr) existiert -> fallback nehmen
+        day = chosen if chosen in date_to_sheet_id else fallback_day
+
         matches = list_match_tabs_for_day(date_to_sheet_id[day])
         st.write("Matches:", matches)
 
