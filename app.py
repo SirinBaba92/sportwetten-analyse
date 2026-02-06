@@ -5504,9 +5504,7 @@ def main():
     tab1, tab2, tab3, tab4 = st.tabs(
         ["📊 Match-Analyse", "🧠 ML-Training", "📚 Trainingsdaten", "📈 Statistiken"]
     )
-
-
-with tab1:
+    with tab1:
     # ---- Monat-State initialisieren (Start = aktueller Monat) ----
     today = date.today()
     if "current_month" not in st.session_state:
