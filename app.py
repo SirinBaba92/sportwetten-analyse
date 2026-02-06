@@ -5617,7 +5617,6 @@ def main():
                             f"{day_num:02d}.{m.month:02d}.{m.year}"
                         )
 
-                    day_counter += 1
             # Kalender-Auswahl übernehmen
             selected_day = st.session_state.get("selected_day")
 
