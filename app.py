@@ -4184,9 +4184,9 @@ def display_results(result):
     st.markdown("---")
     st.subheader("📈 Visualisierungen")
 
-    tab1, tab2 = st.tabs(["μ-Werte", "Risiko-Übersicht"])
+    viz_tab1, viz_tab2 = st.tabs(["μ-Werte", "Risiko-Übersicht"])
 
-    with tab1:
+    with viz_tab1:
         fig_mu = go.Figure(
             data=[
                 go.Bar(
@@ -4202,7 +4202,7 @@ def display_results(result):
         )
         st.plotly_chart(fig_mu, use_container_width=True)
 
-    with tab2:
+    with viz_tab2:
         risk_categories = ["1X2", "Over", "Under", "BTTS Ja", "BTTS Nein"]
         risk_scores = [
             result["extended_risk"]["1x2"]["risk_score"],
