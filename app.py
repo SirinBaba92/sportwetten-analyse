@@ -5505,10 +5505,10 @@ def main():
         ["📊 Match-Analyse", "🧠 ML-Training", "📚 Trainingsdaten", "📈 Statistiken"]
     )
     with tab1:
-    # ---- Monat-State initialisieren (Start = aktueller Monat) ----
-    today = date.today()
-    if "current_month" not in st.session_state:
-        st.session_state.current_month = date(today.year, today.month, 1)
+        # ---- Monat-State initialisieren (Start = aktueller Monat) ----
+        today = date.today()
+        if "current_month" not in st.session_state:
+            st.session_state.current_month = date(today.year, today.month, 1)
 
     # ---- Navigation ----
     col_prev, col_title, col_next = st.columns([1, 2, 1])
@@ -6118,6 +6118,7 @@ def main():
 
     # Sidebar anzeigen
     show_sidebar()
+
 
 # ==================== NEUE FUNKTIONEN FÜR HISTORICAL_DATA ====================
 
