@@ -4755,15 +4755,20 @@ def show_sidebar():
         st.markdown("---")
         st.subheader("💰 RISIKO-MANAGEMENT")
 
+        # Bankroll Input - disabled im Demo-Modus um automatische Updates zu zeigen
         bankroll = st.number_input(
             "Aktuelle Bankroll (€)",
             min_value=10.0,
             max_value=100000.0,
             value=st.session_state.risk_management["bankroll"],
             step=50.0,
-            help="Dein aktuelles Wett-Kapital",
+            help="Dein aktuelles Wett-Kapital (wird automatisch durch simulierte Wetten aktualisiert)",
+            key="sidebar_bankroll_input",
+            disabled=st.session_state.get("enable_demo_mode", False),
         )
-        st.session_state.risk_management["bankroll"] = bankroll
+        # Nur im nicht-Demo-Modus den Wert zurückschreiben
+        if not st.session_state.get("enable_demo_mode", False):
+            st.session_state.risk_management["bankroll"] = bankroll
 
         risk_profile = st.selectbox(
             "Dein Risikoprofil",
