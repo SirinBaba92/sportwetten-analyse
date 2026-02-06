@@ -4853,6 +4853,21 @@ def main():
 
     st.info(f"📅 Gefundene Tagesdateien: {len(date_to_sheet_id)}")
 
+# ---- Auto-Vorwahl (nur wenn noch nichts gewählt ist) ----
+    if date_to_sheet_id and "selected_day" not in st.session_state:
+        today_str = date.today().strftime("%d.%m.%Y")
+
+        if today_str in date_to_sheet_id:
+            st.session_state.selected_day = today_str
+        else:
+            # verfügbare Tage sortieren
+            sorted_days = sorted(date_to_sheet_id.keys(), key=parse_date)
+
+            # letzter Tag <= heute, sonst erster verfügbarer Tag
+            today_dt = date.today()
+            past_or_today = [d for d in sorted_days if parse_date(d) <= today_dt]
+            st.session_state.selected_day = past_or_today[-1] if past_or_today else sorted_days[0]
+
 # Defaults gegen Crashes
     day = None
     matches = []
