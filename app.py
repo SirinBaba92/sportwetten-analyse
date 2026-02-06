@@ -5617,376 +5617,376 @@ def main():
                             f"{day_num:02d}.{m.month:02d}.{m.year}"
                         )
 
-            # Kalender-Auswahl übernehmen
-            selected_day = st.session_state.get("selected_day")
+        # Kalender-Auswahl übernehmen
+        selected_day = st.session_state.get("selected_day")
 
-            if not date_to_sheet_id:
-                st.warning("⚠️ Keine Tagesdateien im Ordner gefunden.")
-                st.stop()
+        if not date_to_sheet_id:
+            st.warning("⚠️ Keine Tagesdateien im Ordner gefunden.")
+            st.stop()
 
-            if (not selected_day) or (selected_day not in date_to_sheet_id):
-                st.warning("⚠️ Bitte wähle oben im Kalender einen Tag mit Daten.")
-                st.stop()
+        if (not selected_day) or (selected_day not in date_to_sheet_id):
+            st.warning("⚠️ Bitte wähle oben im Kalender einen Tag mit Daten.")
+            st.stop()
 
-            spreadsheet_id = date_to_sheet_id[selected_day]
-            sheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
+        spreadsheet_id = date_to_sheet_id[selected_day]
+        sheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
 
-            st.info(f"📎 Tagesdatei: {selected_day} — [Link]({sheet_url})")
-            # ---- Matchliste nur neu laden, wenn Tag/Sheet wechselt ----
-            if st.session_state.get("last_sheet_id") != spreadsheet_id:
-                st.session_state.last_sheet_id = spreadsheet_id
-                st.session_state.match_tabs = list_match_tabs_for_day(spreadsheet_id)
+        st.info(f"📎 Tagesdatei: {selected_day} — [Link]({sheet_url})")
+        # ---- Matchliste nur neu laden, wenn Tag/Sheet wechselt ----
+        if st.session_state.get("last_sheet_id") != spreadsheet_id:
+            st.session_state.last_sheet_id = spreadsheet_id
+            st.session_state.match_tabs = list_match_tabs_for_day(spreadsheet_id)
 
-            matches = st.session_state.get("match_tabs", [])
+        matches = st.session_state.get("match_tabs", [])
 
-            if sheet_url:
-                st.markdown("---")
-                st.subheader("📋 Schritt 2: Match auswählen")
+        if sheet_url:
+            st.markdown("---")
+            st.subheader("📋 Schritt 2: Match auswählen")
 
-                with st.spinner("📥 Lade Tabellenblätter..."):
-                    worksheets = get_all_worksheets(sheet_url)
+            with st.spinner("📥 Lade Tabellenblätter..."):
+                worksheets = get_all_worksheets(sheet_url)
 
-                if worksheets:
-                    st.success(f"✅ {len(worksheets)} Matches gefunden!")
+            if worksheets:
+                st.success(f"✅ {len(worksheets)} Matches gefunden!")
 
-                    st.markdown("**🔍 Match suchen:**")
-                    search_term = st.text_input(
-                        "Suche nach Teamname oder Liga:",
-                        placeholder="z.B. 'Bayern' oder 'Bundesliga'",
-                        help="Suche nach Teamnamen oder Wettbewerben",
-                        key="match_search",
+                st.markdown("**🔍 Match suchen:**")
+                search_term = st.text_input(
+                    "Suche nach Teamname oder Liga:",
+                    placeholder="z.B. 'Bayern' oder 'Bundesliga'",
+                    help="Suche nach Teamnamen oder Wettbewerben",
+                    key=f"match_search_{selected_day.replace('.', '_')}",
+                )
+
+                if search_term:
+                    filtered_worksheets = {
+                        k: v
+                        for k, v in worksheets.items()
+                        if search_term.lower() in k.lower()
+                    }
+                    st.info(
+                        f"📋 {len(filtered_worksheets)} von {len(worksheets)} Matches passen zur Suche"
                     )
+                else:
+                    filtered_worksheets = worksheets
 
-                    if search_term:
-                        filtered_worksheets = {
-                            k: v
-                            for k, v in worksheets.items()
-                            if search_term.lower() in k.lower()
-                        }
-                        st.info(
-                            f"📋 {len(filtered_worksheets)} von {len(worksheets)} Matches passen zur Suche"
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    if filtered_worksheets:
+                        selected_worksheet = st.selectbox(
+                            "Wähle Match:",
+                            list(filtered_worksheets.keys()),
+                            key="tab1_worksheet_select",
+                            help="Wähle ein Match aus der gefilterten Liste",
                         )
                     else:
-                        filtered_worksheets = worksheets
+                        st.warning("Keine Matches gefunden, die der Suche entsprechen.")
+                        selected_worksheet = None
 
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
-                        if filtered_worksheets:
-                            selected_worksheet = st.selectbox(
-                                "Wähle Match:",
-                                list(filtered_worksheets.keys()),
-                                key="tab1_worksheet_select",
-                                help="Wähle ein Match aus der gefilterten Liste",
+                with col2:
+                    st.markdown("**Oder analysiere alle:**")
+                    analyze_all = st.checkbox("Alle Matches", key="analyze_all_check")
+                    if search_term and analyze_all:
+                        st.info(
+                            f"⚠️ Suchfilter wird ignoriert, alle {len(worksheets)} Matches werden analysiert"
+                        )
+
+                if selected_worksheet and not analyze_all:
+                    with st.expander("👁️ Daten-Vorschau"):
+                        preview_data = read_worksheet_data(
+                            sheet_url, selected_worksheet
+                        )
+                        if preview_data:
+                            st.text(preview_data[:800] + "\n...")
+
+                st.markdown("---")
+                st.subheader("⚙️ Schritt 3: Analyse")
+
+                if analyze_all:
+                    if st.button(
+                        "🔄 ALLE Matches analysieren",
+                        type="primary",
+                        use_container_width=True,
+                        key="analyze_all_btn",
+                    ):
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        all_results = []
+                        failed_matches = []
+
+                        for i, (sheet_name, _) in enumerate(worksheets.items()):
+                            status_text.text(
+                                f"📊 Analysiere {sheet_name}... ({i + 1}/{len(worksheets)})"
                             )
-                        else:
-                            st.warning("Keine Matches gefunden, die der Suche entsprechen.")
-                            selected_worksheet = None
+                            progress_bar.progress((i + 1) / len(worksheets))
 
-                    with col2:
-                        st.markdown("**Oder analysiere alle:**")
-                        analyze_all = st.checkbox("Alle Matches", key="analyze_all_check")
-                        if search_term and analyze_all:
-                            st.info(
-                                f"⚠️ Suchfilter wird ignoriert, alle {len(worksheets)} Matches werden analysiert"
-                            )
+                            match_data = read_worksheet_data(sheet_url, sheet_name)
+                            if match_data:
+                                try:
+                                    parser = DataParser()
+                                    match = parser.parse(match_data)
 
-                    if selected_worksheet and not analyze_all:
-                        with st.expander("👁️ Daten-Vorschau"):
-                            preview_data = read_worksheet_data(
-                                sheet_url, selected_worksheet
-                            )
-                            if preview_data:
-                                st.text(preview_data[:800] + "\n...")
+                                    is_valid, missing_fields = validate_match_data(
+                                        match
+                                    )
 
-                    st.markdown("---")
-                    st.subheader("⚙️ Schritt 3: Analyse")
-
-                    if analyze_all:
-                        if st.button(
-                            "🔄 ALLE Matches analysieren",
-                            type="primary",
-                            use_container_width=True,
-                            key="analyze_all_btn",
-                        ):
-                            progress_bar = st.progress(0)
-                            status_text = st.empty()
-                            all_results = []
-                            failed_matches = []
-
-                            for i, (sheet_name, _) in enumerate(worksheets.items()):
-                                status_text.text(
-                                    f"📊 Analysiere {sheet_name}... ({i + 1}/{len(worksheets)})"
-                                )
-                                progress_bar.progress((i + 1) / len(worksheets))
-
-                                match_data = read_worksheet_data(sheet_url, sheet_name)
-                                if match_data:
-                                    try:
-                                        parser = DataParser()
-                                        match = parser.parse(match_data)
-
-                                        is_valid, missing_fields = validate_match_data(
-                                            match
-                                        )
-
-                                        if not is_valid:
-                                            failed_matches.append(
-                                                {
-                                                    "sheet_name": sheet_name,
-                                                    "missing_count": len(missing_fields),
-                                                    "missing_fields": missing_fields,
-                                                }
-                                            )
-                                        else:
-                                            result = analyze_match_v47_ml(match)
-                                            all_results.append(
-                                                {"sheet_name": sheet_name, "result": result}
-                                            )
-
-                                    except Exception as e:
+                                    if not is_valid:
                                         failed_matches.append(
                                             {
                                                 "sheet_name": sheet_name,
-                                                "missing_count": 0,
-                                                "missing_fields": [
-                                                    f"Parsing-Fehler: {str(e)}"
-                                                ],
+                                                "missing_count": len(missing_fields),
+                                                "missing_fields": missing_fields,
                                             }
                                         )
+                                    else:
+                                        result = analyze_match_v47_ml(match)
+                                        all_results.append(
+                                            {"sheet_name": sheet_name, "result": result}
+                                        )
 
-                            status_text.text("✅ Alle Analysen abgeschlossen!")
-                            progress_bar.empty()
-
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("✅ Erfolgreich analysiert", len(all_results))
-                            with col2:
-                                st.metric("⚠️ Fehlende Daten", len(failed_matches))
-                            with col3:
-                                st.metric("📊 Gesamt", len(worksheets))
-
-                            if failed_matches:
-                                st.markdown("---")
-                                st.warning(
-                                    f"⚠️ **{len(failed_matches)} Matches konnten nicht analysiert werden (fehlende Daten)**"
-                                )
-
-                                with st.expander(
-                                    f"📋 Details zu {len(failed_matches)} übersprungenen Matches"
-                                ):
-                                    for failed in failed_matches:
-                                        st.markdown(f"### 🚫 {failed['sheet_name']}")
-                                        if failed["missing_count"] > 0:
-                                            st.caption(
-                                                f"Fehlende Datenpunkte: **{failed['missing_count']}**"
-                                            )
-
-                                            fields_to_show = failed["missing_fields"][:10]
-                                            for field in fields_to_show:
-                                                st.markdown(f"- {field}")
-
-                                            if len(failed["missing_fields"]) > 10:
-                                                st.caption(
-                                                    f"... und {len(failed['missing_fields']) - 10} weitere"
-                                                )
-                                        else:
-                                            st.markdown(f"- {failed['missing_fields'][0]}")
-
-                                        st.markdown("---")
-
-                            if all_results:
-                                st.markdown("---")
-                                st.header("📊 ÜBERSICHT ALLER ANALYSIERTEN MATCHES")
-
-                                overview_data = []
-                                for item in all_results:
-                                    r = item["result"]
-                                    risk = r["extended_risk"]["overall"]
-
-                                    overview_data.append(
+                                except Exception as e:
+                                    failed_matches.append(
                                         {
-                                            "Match": f"{r['match_info']['home']} vs {r['match_info']['away']}",
-                                            "μ_Total": f"{r['mu']['total']:.2f}",
-                                            "Gesamt-Risiko": risk["score_text"],
-                                            "1X2 Risiko": r["extended_risk"]["1x2"][
-                                                "risk_text"
+                                            "sheet_name": sheet_name,
+                                            "missing_count": 0,
+                                            "missing_fields": [
+                                                f"Parsing-Fehler: {str(e)}"
                                             ],
-                                            "Over 2.5": f"{r['probabilities']['over_25']:.1f}%",
-                                            "BTTS Ja": f"{r['probabilities']['btts_yes']:.1f}%",
-                                            "Vorhersage": r["predicted_score"],
                                         }
                                     )
 
-                                df_overview = pd.DataFrame(overview_data)
-                                st.dataframe(
-                                    df_overview, use_container_width=True, hide_index=True
-                                )
+                        status_text.text("✅ Alle Analysen abgeschlossen!")
+                        progress_bar.empty()
 
-                                display_risk_distribution(all_results)
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("✅ Erfolgreich analysiert", len(all_results))
+                        with col2:
+                            st.metric("⚠️ Fehlende Daten", len(failed_matches))
+                        with col3:
+                            st.metric("📊 Gesamt", len(worksheets))
 
-                                st.markdown("---")
-                                st.header("📋 DETAILLIERTE ANALYSEN")
-                                for item in all_results:
-                                    with st.expander(
-                                        f"🎯 {item['sheet_name']} - {item['result']['predicted_score']}",
-                                        expanded=False,
-                                    ):
-                                        display_results(item["result"])
-                            else:
-                                st.error(
-                                    "❌ Keine Matches konnten erfolgreich analysiert werden. Alle haben fehlende Daten."
-                                )
+                        if failed_matches:
+                            st.markdown("---")
+                            st.warning(
+                                f"⚠️ **{len(failed_matches)} Matches konnten nicht analysiert werden (fehlende Daten)**"
+                            )
 
-                    # Single Worksheet Analysis (moved here to be inside if worksheets block)
-                    if selected_worksheet and not analyze_all:
-                        if st.button(
-                            f"🔄 '{selected_worksheet}' analysieren",
-                            type="primary",
-                            use_container_width=True,
-                            key=f"analyze_single_{selected_worksheet}",
-                        ):
-                            with st.spinner(f"⚙️ Analysiere {selected_worksheet}..."):
-                                match_data = read_worksheet_data(
-                                    sheet_url, selected_worksheet
-                                )
-
-                                if match_data:
-                                    try:
-                                        parser = DataParser()
-                                        match = parser.parse(match_data)
-
-                                        # NEU: Speichere Match im session_state
-                                        st.session_state.current_match = match
-                                        st.session_state.current_match_name = (
-                                            selected_worksheet
+                            with st.expander(
+                                f"📋 Details zu {len(failed_matches)} übersprungenen Matches"
+                            ):
+                                for failed in failed_matches:
+                                    st.markdown(f"### 🚫 {failed['sheet_name']}")
+                                    if failed["missing_count"] > 0:
+                                        st.caption(
+                                            f"Fehlende Datenpunkte: **{failed['missing_count']}**"
                                         )
 
-                                        is_valid, missing_fields = validate_match_data(
-                                            match
-                                        )
+                                        fields_to_show = failed["missing_fields"][:10]
+                                        for field in fields_to_show:
+                                            st.markdown(f"- {field}")
 
-                                        if not is_valid:
-                                            st.error("⚠️ **FEHLENDE DATENPUNKTE ERKANNT!**")
-                                            st.warning(
-                                                f"Es fehlen **{len(missing_fields)}** kritische Datenpunkte. Analyse kann nicht durchgeführt werden."
+                                        if len(failed["missing_fields"]) > 10:
+                                            st.caption(
+                                                f"... und {len(failed['missing_fields']) - 10} weitere"
                                             )
+                                    else:
+                                        st.markdown(f"- {failed['missing_fields'][0]}")
 
-                                            st.markdown("### 📋 Folgende Daten fehlen:")
+                                    st.markdown("---")
 
-                                            heim_missing = [
-                                                f
-                                                for f in missing_fields
-                                                if f.startswith("HEIM:")
-                                            ]
-                                            away_missing = [
-                                                f
-                                                for f in missing_fields
-                                                if f.startswith("AUSWÄRTS:")
-                                            ]
-                                            other_missing = [
-                                                f
-                                                for f in missing_fields
-                                                if not (
-                                                    f.startswith("HEIM:")
-                                                    or f.startswith("AUSWÄRTS:")
-                                                )
-                                            ]
+                        if all_results:
+                            st.markdown("---")
+                            st.header("📊 ÜBERSICHT ALLER ANALYSIERTEN MATCHES")
 
-                                            if heim_missing:
-                                                st.markdown("#### 🏠 Heimteam:")
-                                                for field in heim_missing:
-                                                    st.markdown(
-                                                        f"- {field.replace('HEIM: ', '')}"
-                                                    )
+                            overview_data = []
+                            for item in all_results:
+                                r = item["result"]
+                                risk = r["extended_risk"]["overall"]
 
-                                            if away_missing:
-                                                st.markdown("#### ✈️ Auswärtsteam:")
-                                                for field in away_missing:
-                                                    st.markdown(
-                                                        f"- {field.replace('AUSWÄRTS: ', '')}"
-                                                    )
+                                overview_data.append(
+                                    {
+                                        "Match": f"{r['match_info']['home']} vs {r['match_info']['away']}",
+                                        "μ_Total": f"{r['mu']['total']:.2f}",
+                                        "Gesamt-Risiko": risk["score_text"],
+                                        "1X2 Risiko": r["extended_risk"]["1x2"][
+                                            "risk_text"
+                                        ],
+                                        "Over 2.5": f"{r['probabilities']['over_25']:.1f}%",
+                                        "BTTS Ja": f"{r['probabilities']['btts_yes']:.1f}%",
+                                        "Vorhersage": r["predicted_score"],
+                                    }
+                                )
 
-                                            if other_missing:
-                                                st.markdown("#### ⚽ Match-Informationen:")
-                                                for field in other_missing:
-                                                    st.markdown(f"- {field}")
+                            df_overview = pd.DataFrame(overview_data)
+                            st.dataframe(
+                                df_overview, use_container_width=True, hide_index=True
+                            )
 
-                                            st.info(
-                                                "💡 **Tipp:** Überprüfe deinen Scraper und stelle sicher, dass alle Daten korrekt in Google Sheets eingetragen wurden."
-                                            )
+                            display_risk_distribution(all_results)
 
-                                        else:
-                                            result = analyze_match_v47_ml(match)
-                                            # NEU: Speichere auch das Ergebnis
-                                            st.session_state.current_result = result
+                            st.markdown("---")
+                            st.header("📋 DETAILLIERTE ANALYSEN")
+                            for item in all_results:
+                                with st.expander(
+                                    f"🎯 {item['sheet_name']} - {item['result']['predicted_score']}",
+                                    expanded=False,
+                                ):
+                                    display_results(item["result"])
+                        else:
+                            st.error(
+                                "❌ Keine Matches konnten erfolgreich analysiert werden. Alle haben fehlende Daten."
+                            )
 
-                                            st.success("✅ Analyse abgeschlossen!")
-                                            st.markdown("---")
-                                            display_results(result)
-
-                                    except Exception as e:
-                                        st.error(f"❌ Fehler bei der Analyse: {e}")
-                                        st.info(
-                                            "Stelle sicher, dass die Tabellendaten korrekt formatiert sind."
-                                        )
-
-                    # Ergebnis für historische Daten (stabil über Reruns)
-                    if (
-                        "current_result" in st.session_state
-                        and "current_match" in st.session_state
+                # Single Worksheet Analysis (moved here to be inside if worksheets block)
+                if selected_worksheet and not analyze_all:
+                    if st.button(
+                        f"🔄 '{selected_worksheet}' analysieren",
+                        type="primary",
+                        use_container_width=True,
+                        key=f"analyze_single_{selected_worksheet}",
                     ):
-                        st.markdown("---")
-                        st.subheader("📊 Ergebnis für historische Daten eintragen")
-                        st.info(
-                            "💡 **Spiel bereits beendet?** Trage hier das Ergebnis ein für ML-Training."
+                        with st.spinner(f"⚙️ Analysiere {selected_worksheet}..."):
+                            match_data = read_worksheet_data(
+                                sheet_url, selected_worksheet
+                            )
+
+                            if match_data:
+                                try:
+                                    parser = DataParser()
+                                    match = parser.parse(match_data)
+
+                                    # NEU: Speichere Match im session_state
+                                    st.session_state.current_match = match
+                                    st.session_state.current_match_name = (
+                                        selected_worksheet
+                                    )
+
+                                    is_valid, missing_fields = validate_match_data(
+                                        match
+                                    )
+
+                                    if not is_valid:
+                                        st.error("⚠️ **FEHLENDE DATENPUNKTE ERKANNT!**")
+                                        st.warning(
+                                            f"Es fehlen **{len(missing_fields)}** kritische Datenpunkte. Analyse kann nicht durchgeführt werden."
+                                        )
+
+                                        st.markdown("### 📋 Folgende Daten fehlen:")
+
+                                        heim_missing = [
+                                            f
+                                            for f in missing_fields
+                                            if f.startswith("HEIM:")
+                                        ]
+                                        away_missing = [
+                                            f
+                                            for f in missing_fields
+                                            if f.startswith("AUSWÄRTS:")
+                                        ]
+                                        other_missing = [
+                                            f
+                                            for f in missing_fields
+                                            if not (
+                                                f.startswith("HEIM:")
+                                                or f.startswith("AUSWÄRTS:")
+                                            )
+                                        ]
+
+                                        if heim_missing:
+                                            st.markdown("#### 🏠 Heimteam:")
+                                            for field in heim_missing:
+                                                st.markdown(
+                                                    f"- {field.replace('HEIM: ', '')}"
+                                                )
+
+                                        if away_missing:
+                                            st.markdown("#### ✈️ Auswärtsteam:")
+                                            for field in away_missing:
+                                                st.markdown(
+                                                    f"- {field.replace('AUSWÄRTS: ', '')}"
+                                                )
+
+                                        if other_missing:
+                                            st.markdown("#### ⚽ Match-Informationen:")
+                                            for field in other_missing:
+                                                st.markdown(f"- {field}")
+
+                                        st.info(
+                                            "💡 **Tipp:** Überprüfe deinen Scraper und stelle sicher, dass alle Daten korrekt in Google Sheets eingetragen wurden."
+                                        )
+
+                                    else:
+                                        result = analyze_match_v47_ml(match)
+                                        # NEU: Speichere auch das Ergebnis
+                                        st.session_state.current_result = result
+
+                                        st.success("✅ Analyse abgeschlossen!")
+                                        st.markdown("---")
+                                        display_results(result)
+
+                                except Exception as e:
+                                    st.error(f"❌ Fehler bei der Analyse: {e}")
+                                    st.info(
+                                        "Stelle sicher, dass die Tabellendaten korrekt formatiert sind."
+                                    )
+
+                # Ergebnis für historische Daten (stabil über Reruns)
+                if (
+                    "current_result" in st.session_state
+                    and "current_match" in st.session_state
+                ):
+                    st.markdown("---")
+                    st.subheader("📊 Ergebnis für historische Daten eintragen")
+                    st.info(
+                        "💡 **Spiel bereits beendet?** Trage hier das Ergebnis ein für ML-Training."
+                    )
+
+                    with st.form("historical_result_form"):
+                        col_res1, col_res2 = st.columns(2)
+                        with col_res1:
+                            actual_home = st.number_input(
+                                f"**{st.session_state.current_result['match_info']['home']}** Tore",
+                                min_value=0,
+                                max_value=20,
+                                value=0,
+                            )
+                        with col_res2:
+                            actual_away = st.number_input(
+                                f"**{st.session_state.current_result['match_info']['away']}** Tore",
+                                min_value=0,
+                                max_value=20,
+                                value=0,
+                            )
+
+                        submitted = st.form_submit_button(
+                            "💾 Mit Ergebnis in HISTORICAL_DATA speichern",
+                            use_container_width=True,
                         )
 
-                        with st.form("historical_result_form"):
-                            col_res1, col_res2 = st.columns(2)
-                            with col_res1:
-                                actual_home = st.number_input(
-                                    f"**{st.session_state.current_result['match_info']['home']}** Tore",
-                                    min_value=0,
-                                    max_value=20,
-                                    value=0,
-                                )
-                            with col_res2:
-                                actual_away = st.number_input(
-                                    f"**{st.session_state.current_result['match_info']['away']}** Tore",
-                                    min_value=0,
-                                    max_value=20,
-                                    value=0,
-                                )
+                    if submitted:
+                        match_obj = st.session_state.current_match
+                        predicted_mu_home = st.session_state.current_result["mu"][
+                            "home"
+                        ]
+                        predicted_mu_away = st.session_state.current_result["mu"][
+                            "away"
+                        ]
 
-                            submitted = st.form_submit_button(
-                                "💾 Mit Ergebnis in HISTORICAL_DATA speichern",
-                                use_container_width=True,
-                            )
+                        success = save_historical_directly(
+                            match_data=match_obj,
+                            actual_home_goals=int(actual_home),
+                            actual_away_goals=int(actual_away),
+                            predicted_mu_home=predicted_mu_home,
+                            predicted_mu_away=predicted_mu_away,
+                        )
 
-                        if submitted:
-                            match_obj = st.session_state.current_match
-                            predicted_mu_home = st.session_state.current_result["mu"][
-                                "home"
-                            ]
-                            predicted_mu_away = st.session_state.current_result["mu"][
-                                "away"
-                            ]
-
-                            success = save_historical_directly(
-                                match_data=match_obj,
-                                actual_home_goals=int(actual_home),
-                                actual_away_goals=int(actual_away),
-                                predicted_mu_home=predicted_mu_home,
-                                predicted_mu_away=predicted_mu_away,
-                            )
-
-                            if success:
-                                st.balloons()
-                                # Aufräumen, um Konflikte zu vermeiden
-                                st.session_state.pop("current_match", None)
-                                st.session_state.pop("current_result", None)
-                                st.session_state.pop("current_match_name", None)
-                                st.rerun()
+                        if success:
+                            st.balloons()
+                            # Aufräumen, um Konflikte zu vermeiden
+                            st.session_state.pop("current_match", None)
+                            st.session_state.pop("current_result", None)
+                            st.session_state.pop("current_match_name", None)
+                            st.rerun()
 
     with tab2:
         show_ml_training_ui()
