@@ -4934,18 +4934,24 @@ def main():
                 cols[i].markdown(" ")
             else:
                 if day_counter in available_in_month:
-                    is_selected = selected_dt and (selected_dt.year == m.year and selected_dt.month == m.month and selected_dt.day == day_counter)
+                    is_selected = (
+                        selected_dt
+                        and selected_dt.year == m.year
+                        and selected_dt.month == m.month
+                        and selected_dt.day == day_counter
+                    )
                     label = f"✅ {day_counter}" if is_selected else str(day_counter)
 
-                if cols[i].button(label, key=f"cal_{m.year}_{m.month}_{day_counter}"):
-                    st.session_state.selected_day = f"{day_counter:02d}.{m.month:02d}.{m.year}"
-
+                    if cols[i].button(label, key=f"cal_{m.year}_{m.month}_{day_counter}"):
+                        st.session_state.selected_day = f"{day_counter:02d}.{m.month:02d}.{m.year}"
                 else:
                     cols[i].markdown(
                         f"<span style='color:#999'>{day_counter}</span>",
                         unsafe_allow_html=True
                     )
+
                 day_counter += 1
+
 
 # --- Dein Test-Flow (vorerst bleibt er) ---
     if date_to_sheet_id:
