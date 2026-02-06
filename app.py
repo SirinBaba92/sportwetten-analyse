@@ -463,7 +463,16 @@ def display_stake_recommendation(
         )
 
     # DEMO: Simulierte Wette-Buttons
-    if st.session_state.get("enable_demo_mode", False) and match_info:
+    demo_mode_active = st.session_state.get("enable_demo_mode", False)
+    
+    # DEBUG: Zeige Status
+    if demo_mode_active:
+        if match_info:
+            st.info(f"🎮 Demo-Buttons aktiv für: {market_name}")
+        else:
+            st.warning(f"⚠️ Demo-Modus AN, aber match_info ist leer!")
+    
+    if demo_mode_active and match_info:
         col_sim1, col_sim2 = st.columns(2)
         with col_sim1:
             if st.button(
@@ -471,15 +480,23 @@ def display_stake_recommendation(
                 use_container_width=True,
                 key=f"win_{market_name}_{hash(match_info)}",
             ):
+                # DEBUG: Button wurde geklickt!
+                st.write(f"🔴 DEBUG: Gewinn-Button geklickt! Market={market_name}, Match={match_info}")
+                
                 # Speichere ZUERST alle Änderungen im Session State
                 old_bankroll = st.session_state.risk_management["bankroll"]
+                st.write(f"🔴 DEBUG: Alte Bankroll: €{old_bankroll:.2f}")
+                
                 add_to_stake_history(
                     match_info=match_info,
                     stake=stake_info["recommended_stake"],
                     profit=stake_info["potential_win"],
                     market=market_name,
                 )
+                
                 new_bankroll = st.session_state.risk_management["bankroll"]
+                st.write(f"🔴 DEBUG: Neue Bankroll: €{new_bankroll:.2f}")
+                st.write(f"🔴 DEBUG: History Length: {len(st.session_state.risk_management['stake_history'])}")
                 
                 # Lösche den Bankroll-Input Widget-State
                 if "sidebar_bankroll_input" in st.session_state:
