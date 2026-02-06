@@ -298,6 +298,26 @@ def list_daily_sheets_in_folder(folder_id: str) -> Dict[str, str]:
 
     return date_to_id
 
+@st.cache_data(ttl=300)
+def list_match_tabs_for_day(sheet_id: str) -> List[str]:
+    """Returns worksheet titles in the order they appear (match list)."""
+    service = connect_to_sheets(readonly=True)
+    if service is None:
+        return []
+
+    meta = service.spreadsheets().get(
+        spreadsheetId=sheet_id,
+        fields="sheets(properties(title,index))"
+    ).execute()
+
+    sheets = meta.get("sheets", [])
+    sheets_sorted = sorted(
+        sheets, key=lambda s: s["properties"].get("index", 0)
+    )
+
+    return [s["properties"]["title"] for s in sheets_sorted]
+
+
 # ==================== PHASE 1: RISIKO-MANAGEMENT FUNKTIONEN =============
 
 
@@ -4772,7 +4792,10 @@ def main():
     st.info(f"📅 Gefundene Tagesdateien: {len(date_to_sheet_id)}")
 
     if date_to_sheet_id:
-        st.write("Beispiel-Tage:", list(date_to_sheet_id.keys())[:5])
+    day = st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
+    matches = list_match_tabs_for_day(date_to_sheet_id[day])
+    st.write("Matches:", matches)
+
 
 
     # Tab-Layout für verschiedene Funktionen
