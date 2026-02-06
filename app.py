@@ -4795,9 +4795,7 @@ def main():
         day = st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
         matches = list_match_tabs_for_day(date_to_sheet_id[day])
         st.write("Matches:", matches)
-
-
-
+        
     # Tab-Layout für verschiedene Funktionen
     tab1, tab2, tab3, tab4 = st.tabs(
         ["📊 Match-Analyse", "🧠 ML-Training", "📚 Trainingsdaten", "📈 Statistiken"])
