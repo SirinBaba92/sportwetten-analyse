@@ -4891,7 +4891,7 @@ def main():
 
     with tab1:
     # ---- Monat-State initialisieren (Start = aktueller Monat) ----
-    today = date.today()
+            today = date.today()
     if "current_month" not in st.session_state:
         st.session_state.current_month = date(today.year, today.month, 1)
 
