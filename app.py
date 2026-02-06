@@ -4952,12 +4952,11 @@ def main():
         cols[i].markdown(f"**{wd}**")
 
     first_weekday = month_start.weekday()  # Mo=0
-    day_counter = 1
 
     selected_day = st.session_state.get("selected_day")
     selected_dt = parse_date(selected_day) if selected_day else None
 
-# ---- Anzahl Wochen dynamisch ----
+# Anzahl Wochen dynamisch
     total_cells = first_weekday + days_in_month
     weeks_to_show = (total_cells + 6) // 7  # aufrunden
 
@@ -4965,29 +4964,27 @@ def main():
         cols = st.columns(7)
         for i in range(7):
             is_weekend = i >= 5
-            if week == 0 and i < first_weekday:
+
+# Zelle -> Tag im Monat
+            cell_index = week * 7 + i
+            day_num = cell_index - first_weekday + 1  # 1..days_in_month
+
+            if day_num < 1 or day_num > days_in_month:
                 cols[i].markdown(" ")
-            elif day_counter > days_in_month:
-                cols[i].markdown(" ")
+                continue
+
+            if day_num in available_in_month:
+                is_selected = (
+                    selected_dt
+                    and selected_dt.year == m.year
+                    and selected_dt.month == m.month
+                    and selected_dt.day == day_num
+                )
+                label = f"🟢 {day_num}" if is_selected else str(day_num)
+
+                if cols[i].button(label, key=f"cal_{m.year}_{m.month}_{day_num}", use_container_width=True):
+                    st.session_state.selected_day = f"{day_num:02d}.{m.month:02d}.{m.year}"
             else:
-                if day_counter in available_in_month:
-                    is_selected = (
-                        selected_dt
-                        and selected_dt.year == m.year
-                        and selected_dt.month == m.month
-                        and selected_dt.day == day_counter
-                    )
-                    label = f"🟢 {day_counter}" if is_selected else str(day_counter)
-
-                    if cols[i].button(label, key=f"cal_{m.year}_{m.month}_{day_counter}", use_container_width=True):
-                        st.session_state.selected_day = f"{day_counter:02d}.{m.month:02d}.{m.year}"
-                else:
-                    style = "color:#bbb;" if is_weekend else "color:#999;"
-                    cols[i].markdown(
-                        f"<span style='{style}'>{day_counter}</span>",
-                        unsafe_allow_html=True
-                    )
-
                 day_counter += 1
 # Kalender-Auswahl übernehmen
         selected_day = st.session_state.get("selected_day")
