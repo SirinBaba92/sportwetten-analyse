@@ -11,6 +11,8 @@ from datetime import datetime
 import numpy as np
 import hashlib
 from collections import Counter
+DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
 st.set_page_config(page_title="Sportwetten-Prognose v5.0 (SMART-PRECISION)",
                     page_icon="⚽", layout="wide")
@@ -239,7 +241,7 @@ def poisson_probability(lmbda: float, k: int) -> float:
 def connect_to_sheets(readonly=True):
     try:
         credentials_dict = st.secrets["gcp_service_account"]
-        creds = Credentials.from_service_account_info(credentials_dict)
+        creds = Credentials.from_service_account_info(credentials_dict, scopes=SHEETS_SCOPES)
         service = build('sheets', 'v4', credentials=creds)
         return service
     except Exception as e:
@@ -249,7 +251,7 @@ def connect_to_sheets(readonly=True):
 def connect_to_drive():
     try:
         credentials_dict = st.secrets["gcp_service_account"]
-        creds = Credentials.from_service_account_info(credentials_dict)
+        creds = Credentials.from_service_account_info(credentials_dict, scopes=DRIVE_SCOPES)
         service = build('drive', 'v3', credentials=creds)
         return service
     except Exception as e:
