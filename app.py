@@ -4992,7 +4992,13 @@ def main():
         sheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
 
         st.info(f"📎 Tagesdatei: {selected_day} — [Link]({sheet_url})")
-    
+# ---- Matchliste nur neu laden, wenn Tag/Sheet wechselt ----
+        if st.session_state.get("last_sheet_id") != spreadsheet_id:
+            st.session_state.last_sheet_id = spreadsheet_id
+            st.session_state.match_tabs = list_match_tabs_for_day(spreadsheet_id)
+
+        matches = st.session_state.get("match_tabs", [])
+
         if sheet_url:
             st.markdown("---")
             st.subheader("📋 Schritt 2: Match auswählen")
