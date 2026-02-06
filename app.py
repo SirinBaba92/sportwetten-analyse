@@ -368,13 +368,16 @@ def add_to_stake_history(match_info: str, stake: float, profit: float, market: s
     if "stake_history" not in st.session_state.risk_management:
         st.session_state.risk_management["stake_history"] = []
 
+    # Speichere aktuelle Bankroll BEVOR die Änderung
+    bankroll_before = st.session_state.risk_management["bankroll"]
+    
     history_entry = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "match": match_info,
         "stake": stake,
         "profit": profit,
         "market": market,
-        "bankroll_before": st.session_state.risk_management["bankroll"] - profit,
+        "bankroll_before": bankroll_before,
     }
 
     st.session_state.risk_management["stake_history"].append(history_entry)
@@ -387,6 +390,9 @@ def add_to_stake_history(match_info: str, stake: float, profit: float, market: s
 
     # Aktualisiere Bankroll
     st.session_state.risk_management["bankroll"] += profit
+    
+    # DEBUG: Log die Änderung
+    print(f"DEBUG: Bankroll updated from {bankroll_before:.2f} to {st.session_state.risk_management['bankroll']:.2f} (profit: {profit:.2f})")
 
 
 def calculate_stake_recommendation(
@@ -474,8 +480,9 @@ def display_stake_recommendation(
                 # Lösche den Bankroll-Input Widget-State damit er den neuen Wert liest
                 if "sidebar_bankroll_input" in st.session_state:
                     del st.session_state["sidebar_bankroll_input"]
-                st.success(f"✅ +€{stake_info['potential_win']} Gewinn simuliert!")
-                st.rerun()
+                # Zeige Erfolg mit aktueller Bankroll
+                new_bankroll = st.session_state.risk_management["bankroll"]
+                st.success(f"✅ +€{stake_info['potential_win']:.2f} Gewinn simuliert! Neue Bankroll: €{new_bankroll:,.2f}")
 
         with col_sim2:
             if st.button(
@@ -492,8 +499,9 @@ def display_stake_recommendation(
                 # Lösche den Bankroll-Input Widget-State damit er den neuen Wert liest
                 if "sidebar_bankroll_input" in st.session_state:
                     del st.session_state["sidebar_bankroll_input"]
-                st.error(f"❌ -€{stake_info['potential_loss']} Verlust simuliert!")
-                st.rerun()
+                # Zeige Erfolg mit aktueller Bankroll
+                new_bankroll = st.session_state.risk_management["bankroll"]
+                st.error(f"❌ -€{stake_info['potential_loss']:.2f} Verlust simuliert! Neue Bankroll: €{new_bankroll:,.2f}")
 
     with st.expander("📊 Detaillierte Einsatz-Analyse", expanded=False):
         col_a, col_b, col_c = st.columns(3)
