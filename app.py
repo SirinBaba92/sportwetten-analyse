@@ -4928,6 +4928,7 @@ def main():
     for week in range(6):
         cols = st.columns(7)
         for i in range(7):
+            is_weekend = i >= 5
             if week == 0 and i < first_weekday:
                 cols[i].markdown(" ")
             elif day_counter > days_in_month:
@@ -4945,8 +4946,9 @@ def main():
                     if cols[i].button(label, key=f"cal_{m.year}_{m.month}_{day_counter}"):
                         st.session_state.selected_day = f"{day_counter:02d}.{m.month:02d}.{m.year}"
                 else:
+                    style = "color:#bbb;" if is_weekend else "color:#999;"
                     cols[i].markdown(
-                        f"<span style='color:#999'>{day_counter}</span>",
+                        f"<span style='{style}'>{day_counter}</span>",
                         unsafe_allow_html=True
                     )
 
@@ -5007,7 +5009,7 @@ def main():
                         selected_worksheet = st.selectbox(
                             "Wähle Match:",
                             list(filtered_worksheets.keys()),
-                            key="worksheet_select",
+                            key="tab1_worksheet_select",
                             help="Wähle ein Match aus der gefilterten Liste"
                         )
                     else:
