@@ -4941,7 +4941,7 @@ def main():
                         and selected_dt.month == m.month
                         and selected_dt.day == day_counter
                     )
-                    label = f"✅ {day_counter}" if is_selected else str(day_counter)
+                    label = f"🟢 {day_counter}" if is_selected else str(day_counter)
 
                     if cols[i].button(label, key=f"cal_{m.year}_{m.month}_{day_counter}"):
                         st.session_state.selected_day = f"{day_counter:02d}.{m.month:02d}.{m.year}"
