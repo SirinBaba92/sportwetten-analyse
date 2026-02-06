@@ -4941,19 +4941,18 @@ def main():
                 day_counter += 1
 
 # --- Dein Test-Flow (vorerst bleibt er) ---
-if date_to_sheet_id:
-    selected = st.session_state.get("selected_day")
+    if date_to_sheet_id:
+        selected = st.session_state.get("selected_day")
 
-    # Selectbox nur zeigen, wenn noch nichts gewählt ist ODER Auswahl ungültig ist
-    if (not selected) or (selected not in date_to_sheet_id):
-        day = st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
-        st.session_state.selected_day = day
-    else:
-        day = selected
+# Selectbox nur zeigen, wenn noch nichts gewählt ist ODER Auswahl ungültig ist
+        if (not selected) or (selected not in date_to_sheet_id):
+            day = st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
+            st.session_state.selected_day = day
+        else:
+            day = selected
 
-    matches = list_match_tabs_for_day(date_to_sheet_id[day])
-    st.write("Matches:", matches)
-
+        matches = list_match_tabs_for_day(date_to_sheet_id[day])
+        st.write("Matches:", matches)
 
     if matches:
         match_name = st.selectbox("Match auswählen", matches)
