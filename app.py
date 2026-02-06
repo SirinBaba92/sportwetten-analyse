@@ -3874,6 +3874,53 @@ def read_worksheet_data(sheet_url, sheet_name):
         st.error(f"❌ Fehler: {e}")
         return None
 
+@st.cache_resource
+def get_all_worksheets_by_id(spreadsheet_id: str):
+    """Wie get_all_worksheets(), aber bekommt direkt die spreadsheetId."""
+    try:
+        service = connect_to_sheets(readonly=True)
+        if service is None:
+            return None
+
+        sheet_metadata = service.spreadsheets().get(
+            spreadsheetId=spreadsheet_id
+        ).execute()
+
+        sheets = sheet_metadata.get('sheets', [])
+        return {s['properties']['title']: s['properties']['sheetId'] for s in sheets}
+
+    except Exception as e:
+        st.error(f"❌ Fehler: {e}")
+        return None
+
+
+@st.cache_data(ttl=300)
+def read_worksheet_text_by_id(spreadsheet_id: str, sheet_name: str) -> Optional[str]:
+    """Wie read_worksheet_data(), aber spreadsheetId direkt + gibt Text für DataParser zurück."""
+    try:
+        service = connect_to_sheets(readonly=True)
+        if service is None:
+            return None
+
+        range_name = f"'{sheet_name}'!A:Z"
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=range_name
+        ).execute()
+
+        data = result.get('values', [])
+
+        text_data = []
+        for row in data:
+            if any(cell.strip() for cell in row if cell):
+                text_data.append('\t'.join(row))
+
+        return '\n'.join(text_data)
+
+    except Exception as e:
+        st.error(f"❌ Fehler: {e}")
+        return None
+
 
 class DataParser:
     def __init__(self):
