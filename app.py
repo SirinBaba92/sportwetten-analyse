@@ -473,66 +473,60 @@ def display_stake_recommendation(
             st.warning(f"⚠️ Demo-Modus AN, aber match_info ist leer!")
     
     if demo_mode_active and match_info:
+        
+        # Callback-Funktionen für Buttons
+        def on_win_click():
+            old_bankroll = st.session_state.risk_management["bankroll"]
+            add_to_stake_history(
+                match_info=match_info,
+                stake=stake_info["recommended_stake"],
+                profit=stake_info["potential_win"],
+                market=market_name,
+            )
+            new_bankroll = st.session_state.risk_management["bankroll"]
+            # Speichere Message für nächsten Render
+            st.session_state["last_demo_action"] = f"✅ +€{stake_info['potential_win']:.2f} Gewinn! {old_bankroll:.2f} → {new_bankroll:.2f}"
+            if "sidebar_bankroll_input" in st.session_state:
+                del st.session_state["sidebar_bankroll_input"]
+        
+        def on_loss_click():
+            old_bankroll = st.session_state.risk_management["bankroll"]
+            add_to_stake_history(
+                match_info=match_info,
+                stake=stake_info["recommended_stake"],
+                profit=-stake_info["potential_loss"],
+                market=market_name,
+            )
+            new_bankroll = st.session_state.risk_management["bankroll"]
+            # Speichere Message für nächsten Render
+            st.session_state["last_demo_action"] = f"❌ -€{stake_info['potential_loss']:.2f} Verlust! {old_bankroll:.2f} → {new_bankroll:.2f}"
+            if "sidebar_bankroll_input" in st.session_state:
+                del st.session_state["sidebar_bankroll_input"]
+        
+        # Zeige letzte Aktion wenn vorhanden
+        if "last_demo_action" in st.session_state:
+            if "✅" in st.session_state["last_demo_action"]:
+                st.success(st.session_state["last_demo_action"])
+            else:
+                st.error(st.session_state["last_demo_action"])
+            del st.session_state["last_demo_action"]
+        
         col_sim1, col_sim2 = st.columns(2)
         with col_sim1:
-            if st.button(
+            st.button(
                 f"✅ {market_name} GEWINN simulieren",
                 use_container_width=True,
                 key=f"win_{market_name}_{hash(match_info)}",
-            ):
-                # DEBUG: Button wurde geklickt!
-                st.write(f"🔴 DEBUG: Gewinn-Button geklickt! Market={market_name}, Match={match_info}")
-                
-                # Speichere ZUERST alle Änderungen im Session State
-                old_bankroll = st.session_state.risk_management["bankroll"]
-                st.write(f"🔴 DEBUG: Alte Bankroll: €{old_bankroll:.2f}")
-                
-                add_to_stake_history(
-                    match_info=match_info,
-                    stake=stake_info["recommended_stake"],
-                    profit=stake_info["potential_win"],
-                    market=market_name,
-                )
-                
-                new_bankroll = st.session_state.risk_management["bankroll"]
-                st.write(f"🔴 DEBUG: Neue Bankroll: €{new_bankroll:.2f}")
-                st.write(f"🔴 DEBUG: History Length: {len(st.session_state.risk_management['stake_history'])}")
-                
-                # Lösche den Bankroll-Input Widget-State
-                if "sidebar_bankroll_input" in st.session_state:
-                    del st.session_state["sidebar_bankroll_input"]
-                
-                # Zeige Erfolg
-                st.success(f"✅ +€{stake_info['potential_win']:.2f} Gewinn simuliert! Bankroll: €{old_bankroll:.2f} → €{new_bankroll:.2f}")
-                
-                # WICHTIG: Rerun um Sidebar zu aktualisieren
-                st.rerun()
-
+                on_click=on_win_click,
+            )
+        
         with col_sim2:
-            if st.button(
+            st.button(
                 f"❌ {market_name} VERLUST simulieren",
                 use_container_width=True,
                 key=f"loss_{market_name}_{hash(match_info)}",
-            ):
-                # Speichere ZUERST alle Änderungen im Session State
-                old_bankroll = st.session_state.risk_management["bankroll"]
-                add_to_stake_history(
-                    match_info=match_info,
-                    stake=stake_info["recommended_stake"],
-                    profit=-stake_info["potential_loss"],
-                    market=market_name,
-                )
-                new_bankroll = st.session_state.risk_management["bankroll"]
-                
-                # Lösche den Bankroll-Input Widget-State
-                if "sidebar_bankroll_input" in st.session_state:
-                    del st.session_state["sidebar_bankroll_input"]
-                
-                # Zeige Erfolg
-                st.error(f"❌ -€{stake_info['potential_loss']:.2f} Verlust simuliert! Bankroll: €{old_bankroll:.2f} → €{new_bankroll:.2f}")
-                
-                # WICHTIG: Rerun um Sidebar zu aktualisieren
-                st.rerun()
+                on_click=on_loss_click,
+            )
 
     with st.expander("📊 Detaillierte Einsatz-Analyse", expanded=False):
         col_a, col_b, col_c = st.columns(3)
