@@ -4912,7 +4912,17 @@ def main():
         if d.year == m.year and d.month == m.month
     }
 
-    st.markdown("#### 🗓️ Kalender")
+    st.markdown("""
+    <style>
+    /* Größere Button-Flächen für den Kalender */
+    div[data-testid="column"] button {
+    width: 100%;
+    height: 2.8rem;
+    font-size: 1rem;
+    padding: 0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
     weekdays = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
     cols = st.columns(7)
