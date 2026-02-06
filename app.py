@@ -471,18 +471,25 @@ def display_stake_recommendation(
                 use_container_width=True,
                 key=f"win_{market_name}_{hash(match_info)}",
             ):
+                # Speichere ZUERST alle Änderungen im Session State
+                old_bankroll = st.session_state.risk_management["bankroll"]
                 add_to_stake_history(
                     match_info=match_info,
                     stake=stake_info["recommended_stake"],
                     profit=stake_info["potential_win"],
                     market=market_name,
                 )
-                # Lösche den Bankroll-Input Widget-State damit er den neuen Wert liest
+                new_bankroll = st.session_state.risk_management["bankroll"]
+                
+                # Lösche den Bankroll-Input Widget-State
                 if "sidebar_bankroll_input" in st.session_state:
                     del st.session_state["sidebar_bankroll_input"]
-                # Zeige Erfolg mit aktueller Bankroll
-                new_bankroll = st.session_state.risk_management["bankroll"]
-                st.success(f"✅ +€{stake_info['potential_win']:.2f} Gewinn simuliert! Neue Bankroll: €{new_bankroll:,.2f}")
+                
+                # Zeige Erfolg
+                st.success(f"✅ +€{stake_info['potential_win']:.2f} Gewinn simuliert! Bankroll: €{old_bankroll:.2f} → €{new_bankroll:.2f}")
+                
+                # WICHTIG: Rerun um Sidebar zu aktualisieren
+                st.rerun()
 
         with col_sim2:
             if st.button(
@@ -490,18 +497,25 @@ def display_stake_recommendation(
                 use_container_width=True,
                 key=f"loss_{market_name}_{hash(match_info)}",
             ):
+                # Speichere ZUERST alle Änderungen im Session State
+                old_bankroll = st.session_state.risk_management["bankroll"]
                 add_to_stake_history(
                     match_info=match_info,
                     stake=stake_info["recommended_stake"],
                     profit=-stake_info["potential_loss"],
                     market=market_name,
                 )
-                # Lösche den Bankroll-Input Widget-State damit er den neuen Wert liest
+                new_bankroll = st.session_state.risk_management["bankroll"]
+                
+                # Lösche den Bankroll-Input Widget-State
                 if "sidebar_bankroll_input" in st.session_state:
                     del st.session_state["sidebar_bankroll_input"]
-                # Zeige Erfolg mit aktueller Bankroll
-                new_bankroll = st.session_state.risk_management["bankroll"]
-                st.error(f"❌ -€{stake_info['potential_loss']:.2f} Verlust simuliert! Neue Bankroll: €{new_bankroll:,.2f}")
+                
+                # Zeige Erfolg
+                st.error(f"❌ -€{stake_info['potential_loss']:.2f} Verlust simuliert! Bankroll: €{old_bankroll:.2f} → €{new_bankroll:.2f}")
+                
+                # WICHTIG: Rerun um Sidebar zu aktualisieren
+                st.rerun()
 
     with st.expander("📊 Detaillierte Einsatz-Analyse", expanded=False):
         col_a, col_b, col_c = st.columns(3)
@@ -4770,9 +4784,14 @@ def show_sidebar():
         st.subheader("💰 RISIKO-MANAGEMENT")
 
         # Bankroll Anzeige/Input
-        if st.session_state.get("enable_demo_mode", False):
+        demo_mode_active = st.session_state.get("enable_demo_mode", False)
+        current_bankroll = st.session_state.risk_management["bankroll"]
+        
+        # DEBUG INFO
+        st.caption(f"🔍 Debug: Demo={demo_mode_active}, Bankroll=€{current_bankroll:.2f}, History={len(st.session_state.risk_management.get('stake_history', []))}")
+        
+        if demo_mode_active:
             # Im Demo-Modus: Zeige als Metric (read-only)
-            current_bankroll = st.session_state.risk_management["bankroll"]
             st.metric(
                 "Aktuelle Bankroll",
                 f"€{current_bankroll:,.2f}",
@@ -4784,7 +4803,7 @@ def show_sidebar():
                 "Aktuelle Bankroll (€)",
                 min_value=10.0,
                 max_value=100000.0,
-                value=st.session_state.risk_management["bankroll"],
+                value=current_bankroll,
                 step=50.0,
                 help="Dein aktuelles Wett-Kapital",
                 key="sidebar_bankroll_input",
