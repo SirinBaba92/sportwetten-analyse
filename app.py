@@ -4946,19 +4946,6 @@ def main():
                 st.session_state.current_month = date(y, mo, 1)
                 st.rerun()
 
-    st.markdown("""
-    <style>
-    /* Größere Button-Flächen für den Kalender */
-    div[data-testid="column"] button {
-    width: 100%;
-    height: 3.2rem;
-    font-size: 1.25rem;
-    font-weight: 600;
-    padding: 0;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
     weekdays = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
     cols = st.columns(7)
     for i, wd in enumerate(weekdays):
@@ -4992,7 +4979,7 @@ def main():
                     )
                     label = f"🟢 {day_counter}" if is_selected else str(day_counter)
 
-                    if cols[i].button(label, key=f"cal_{m.year}_{m.month}_{day_counter}"):
+                if cols[i].button(label, key=f"cal_{m.year}_{m.month}_{day_counter}", use_container_width=True):
                         st.session_state.selected_day = f"{day_counter:02d}.{m.month:02d}.{m.year}"
                 else:
                     style = "color:#bbb;" if is_weekend else "color:#999;"
