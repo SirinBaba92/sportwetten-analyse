@@ -4970,12 +4970,6 @@ def main():
     if matches:
         match_name = st.selectbox("Match auswählen", matches)
         st.write("Ausgewählt:", match_name)
-
-    if day and match_name:
-        data = read_sheet_range(date_to_sheet_id[day], f"'{match_name}'!A1:Z200")
-        st.write("Zeilen geladen:", len(data))
-        if data:
-            st.write(data[:5])
     
     # Tab-Layout für verschiedene Funktionen
     tab1, tab2, tab3, tab4 = st.tabs(
