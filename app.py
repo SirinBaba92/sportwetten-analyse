@@ -4984,8 +4984,7 @@ def main():
 
                 if cols[i].button(label, key=f"cal_{m.year}_{m.month}_{day_num}", use_container_width=True):
                     st.session_state.selected_day = f"{day_num:02d}.{m.month:02d}.{m.year}"
-            else:
-                day_counter += 1
+            
 # Kalender-Auswahl übernehmen
         selected_day = st.session_state.get("selected_day")
 
