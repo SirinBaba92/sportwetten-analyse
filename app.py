@@ -4918,6 +4918,28 @@ def main():
         d.day for d in available_dates
         if d.year == m.year and d.month == m.month
     }
+# ---- Wenn keine Daten im Monat: Hinweis + Sprungbuttons ----
+    available_months = sorted({(d.year, d.month) for d in available_dates})
+    cur_key = (m.year, m.month)
+
+    if cur_key not in available_months:
+        st.warning("Keine Daten in diesem Monat.")
+
+        prev_months = [mm for mm in available_months if mm < cur_key]
+        next_months = [mm for mm in available_months if mm > cur_key]
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if prev_months and st.button("⬅️ Zum letzten Monat mit Daten", key="jump_prev_data"):
+                y, mo = prev_months[-1]
+                st.session_state.current_month = date(y, mo, 1)
+                st.rerun()
+
+        with c2:
+            if next_months and st.button("Zum nächsten Monat mit Daten ➡️", key="jump_next_data"):
+                y, mo = next_months[0]
+                st.session_state.current_month = date(y, mo, 1)
+                st.rerun()
 
     st.markdown("""
     <style>
@@ -4943,7 +4965,11 @@ def main():
     selected_day = st.session_state.get("selected_day")
     selected_dt = parse_date(selected_day) if selected_day else None
 
-    for week in range(6):
+# ---- Anzahl Wochen dynamisch ----
+    total_cells = first_weekday + days_in_month
+    weeks_to_show = (total_cells + 6) // 7  # aufrunden
+
+    for week in range(weeks_to_show):
         cols = st.columns(7)
         for i in range(7):
             is_weekend = i >= 5
