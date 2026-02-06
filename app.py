@@ -4879,9 +4879,50 @@ def main():
             m = st.session_state.current_month
             st.session_state.current_month = date(m.year + 1, 1, 1) if m.month == 12 else date(m.year, m.month + 1, 1)
 
+# ---- Verfügbare Tage vorbereiten ----
+    available_dates = [parse_date(d) for d in date_to_sheet_id.keys()]
+
+    m = st.session_state.current_month
+    month_start = date(m.year, m.month, 1)
+    next_month = date(m.year + (m.month == 12), 1 if m.month == 12 else m.month + 1, 1)
+    days_in_month = (next_month - month_start).days
+
+    available_in_month = {
+        d.day for d in available_dates
+        if d.year == m.year and d.month == m.month
+    }
+
+    st.markdown("#### 🗓️ Kalender")
+
+    weekdays = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+    cols = st.columns(7)
+    for i, wd in enumerate(weekdays):
+        cols[i].markdown(f"**{wd}**")
+
+    first_weekday = month_start.weekday()  # Mo=0
+    day_counter = 1
+
+    for week in range(6):
+        cols = st.columns(7)
+        for i in range(7):
+            if week == 0 and i < first_weekday:
+                cols[i].markdown(" ")
+            elif day_counter > days_in_month:
+                cols[i].markdown(" ")
+            else:
+                if day_counter in available_in_month:
+                    if cols[i].button(str(day_counter), key=f"cal_{m.year}_{m.month}_{day_counter}"):
+                        st.session_state.selected_day = f"{day_counter:02d}.{m.month:02d}.{m.year}"
+                else:
+                    cols[i].markdown(
+                        f"<span style='color:#999'>{day_counter}</span>",
+                        unsafe_allow_html=True
+                    )
+                day_counter += 1
+
 # --- Dein Test-Flow (vorerst bleibt er) ---
     if date_to_sheet_id:
-        day = st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
+        day = st.session_state.get("selected_day") or st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
         matches = list_match_tabs_for_day(date_to_sheet_id[day])
         st.write("Matches:", matches)
 
