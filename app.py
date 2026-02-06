@@ -4868,6 +4868,11 @@ def main():
             past_or_today = [d for d in sorted_days if parse_date(d) <= today_dt]
             st.session_state.selected_day = past_or_today[-1] if past_or_today else sorted_days[0]
 
+# ---- Kalender auf ausgewählten Tag-Monat springen ----
+    if "selected_day" in st.session_state:
+        sd = parse_date(st.session_state.selected_day)
+        st.session_state.current_month = date(sd.year, sd.month, 1)
+
 # Defaults gegen Crashes
     day = None
     matches = []
