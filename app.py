@@ -4979,7 +4979,7 @@ def main():
                     )
                     label = f"🟢 {day_counter}" if is_selected else str(day_counter)
 
-                if cols[i].button(label, key=f"cal_{m.year}_{m.month}_{day_counter}", use_container_width=True):
+                    if cols[i].button(label, key=f"cal_{m.year}_{m.month}_{day_counter}", use_container_width=True):
                         st.session_state.selected_day = f"{day_counter:02d}.{m.month:02d}.{m.year}"
                 else:
                     style = "color:#bbb;" if is_weekend else "color:#999;"
