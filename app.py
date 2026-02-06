@@ -4885,7 +4885,12 @@ def main():
     matches = []
     match_name = None
 
-# ---- Monat-State initialisieren (Start = aktueller Monat) ----
+    # Tab-Layout für verschiedene Funktionen
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["📊 Match-Analyse", "🧠 ML-Training", "📚 Trainingsdaten", "📈 Statistiken"])
+
+    with tab1:
+    # ---- Monat-State initialisieren (Start = aktueller Monat) ----
     today = date.today()
     if "current_month" not in st.session_state:
         st.session_state.current_month = date(today.year, today.month, 1)
@@ -4997,12 +5002,6 @@ def main():
                     )
 
                 day_counter += 1
-
-    # Tab-Layout für verschiedene Funktionen
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["📊 Match-Analyse", "🧠 ML-Training", "📚 Trainingsdaten", "📈 Statistiken"])
-
-    with tab1:
 # Kalender-Auswahl übernehmen
         selected_day = st.session_state.get("selected_day")
 
