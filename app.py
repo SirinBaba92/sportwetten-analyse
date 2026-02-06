@@ -317,6 +317,17 @@ def list_match_tabs_for_day(sheet_id: str) -> List[str]:
 
     return [s["properties"]["title"] for s in sheets_sorted]
 
+@st.cache_data(ttl=300)
+def read_sheet_range(sheet_id: str, a1_range: str) -> List[List[str]]:
+    service = connect_to_sheets(readonly=True)
+    if service is None:
+        return []
+    resp = service.spreadsheets().values().get(
+        spreadsheetId=sheet_id,
+        range=a1_range
+    ).execute()
+    return resp.get("values", [])
+
 
 # ==================== PHASE 1: RISIKO-MANAGEMENT FUNKTIONEN =============
 
@@ -4799,6 +4810,11 @@ def main():
     if matches:
         match_name = st.selectbox("Match auswählen", matches)
         st.write("Ausgewählt:", match_name)
+
+    data = read_sheet_range(date_to_sheet_id[day], f"'{match_name}'!A1:Z200")
+    st.write("Zeilen geladen:", len(data))
+    if data:
+        st.write(data[:5])
 
 
     # Tab-Layout für verschiedene Funktionen
