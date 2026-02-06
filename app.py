@@ -11,6 +11,7 @@ from datetime import datetime
 import numpy as np
 import hashlib
 from collections import Counter
+from datetime import datetime, date, timedelta
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
@@ -328,6 +329,8 @@ def read_sheet_range(sheet_id: str, a1_range: str) -> List[List[str]]:
     ).execute()
     return resp.get("values", [])
 
+def parse_date(d: str) -> date:
+    return datetime.strptime(d, "%d.%m.%Y").date()
 
 # ==================== PHASE 1: RISIKO-MANAGEMENT FUNKTIONEN =============
 
@@ -4833,6 +4836,7 @@ def add_historical_match_ui():
     else:
         st.info("ℹ️ Noch keine Trainingsdaten vorhanden. Füge oben welche hinzu!")
 
+
 # ==================== HAUPT-APP ====================
 
 
@@ -4849,6 +4853,33 @@ def main():
 
     st.info(f"📅 Gefundene Tagesdateien: {len(date_to_sheet_id)}")
 
+# Defaults gegen Crashes
+    day = None
+    matches = []
+    match_name = None
+
+# ---- Monat-State initialisieren (Start = aktueller Monat) ----
+    today = date.today()
+    if "current_month" not in st.session_state:
+        st.session_state.current_month = date(today.year, today.month, 1)
+
+# ---- Navigation ----
+    col_prev, col_title, col_next = st.columns([1, 2, 1])
+    with col_prev:
+        if st.button("←", key="month_prev"):
+            m = st.session_state.current_month
+            st.session_state.current_month = date(m.year - 1, 12, 1) if m.month == 1 else date(m.year, m.month - 1, 1)
+
+    with col_title:
+        m = st.session_state.current_month
+        st.markdown(f"### {m.strftime('%B %Y')}")
+
+    with col_next:
+        if st.button("→", key="month_next"):
+            m = st.session_state.current_month
+            st.session_state.current_month = date(m.year + 1, 1, 1) if m.month == 12 else date(m.year, m.month + 1, 1)
+
+# --- Dein Test-Flow (vorerst bleibt er) ---
     if date_to_sheet_id:
         day = st.selectbox("Datum auswählen", sorted(date_to_sheet_id.keys()))
         matches = list_match_tabs_for_day(date_to_sheet_id[day])
@@ -4858,12 +4889,12 @@ def main():
         match_name = st.selectbox("Match auswählen", matches)
         st.write("Ausgewählt:", match_name)
 
-    data = read_sheet_range(date_to_sheet_id[day], f"'{match_name}'!A1:Z200")
-    st.write("Zeilen geladen:", len(data))
-    if data:
-        st.write(data[:5])
-
-
+    if day and match_name:
+        data = read_sheet_range(date_to_sheet_id[day], f"'{match_name}'!A1:Z200")
+        st.write("Zeilen geladen:", len(data))
+        if data:
+            st.write(data[:5])
+    
     # Tab-Layout für verschiedene Funktionen
     tab1, tab2, tab3, tab4 = st.tabs(
         ["📊 Match-Analyse", "🧠 ML-Training", "📚 Trainingsdaten", "📈 Statistiken"])
