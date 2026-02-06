@@ -256,6 +256,46 @@ def connect_to_drive():
         st.error(f"❌ Fehler bei Google Drive Verbindung: {e}")
         return None
 
+DATE_NAME_RE = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
+
+@st.cache_data(ttl=300)
+def list_daily_sheets_in_folder(folder_id: str) -> Dict[str, str]:
+    """
+    Returns mapping: '15.12.2025' -> '<spreadsheetId>'
+    Only includes files whose name matches dd.mm.yyyy
+    """
+    service = connect_to_drive()
+    if service is None:
+        return {}
+
+    q = (
+        f"'{folder_id}' in parents "
+        "and mimeType='application/vnd.google-apps.spreadsheet' "
+        "and trashed=false"
+    )
+
+    date_to_id: Dict[str, str] = {}
+    page_token = None
+
+    while True:
+        resp = service.files().list(
+            q=q,
+            fields="nextPageToken, files(id, name)",
+            pageToken=page_token,
+            pageSize=1000
+        ).execute()
+
+        for f in resp.get("files", []):
+            name = (f.get("name") or "").strip()
+            if DATE_NAME_RE.match(name):
+                date_to_id[name] = f["id"]
+
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+
+    return date_to_id
+
 # ==================== PHASE 1: RISIKO-MANAGEMENT FUNKTIONEN =============
 
 
@@ -4723,6 +4763,15 @@ def main():
     st.markdown(
         "**Neu:** Gesamt-Risiko 1-5 + individuelle Wetten-Risikos + Bankroll-Management + ML-Korrekturen")
     st.markdown("---")
+
+    folder_id = st.secrets["prematch"]["folder_id"]
+    date_to_sheet_id = list_daily_sheets_in_folder(folder_id)
+
+    st.info(f"📅 Gefundene Tagesdateien: {len(date_to_sheet_id)}")
+
+    if date_to_sheet_id:
+        st.write("Beispiel-Tage:", list(date_to_sheet_id.keys())[:5])
+
 
     # Tab-Layout für verschiedene Funktionen
     tab1, tab2, tab3, tab4 = st.tabs(
