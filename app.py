@@ -246,6 +246,16 @@ def connect_to_sheets(readonly=True):
         st.error(f"❌ Fehler bei Google Sheets Verbindung: {e}")
         return None
 
+def connect_to_drive():
+    try:
+        credentials_dict = st.secrets["gcp_service_account"]
+        creds = Credentials.from_service_account_info(credentials_dict)
+        service = build('drive', 'v3', credentials=creds)
+        return service
+    except Exception as e:
+        st.error(f"❌ Fehler bei Google Drive Verbindung: {e}")
+        return None
+
 # ==================== PHASE 1: RISIKO-MANAGEMENT FUNKTIONEN =============
 
 
