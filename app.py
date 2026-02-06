@@ -4871,9 +4871,17 @@ def main():
     with tab1:
         st.subheader("📊 Schritt 1: Google Sheets Datei")
 
-        sheet_url = "https://docs.google.com/spreadsheets/d/15V0TAf25LVekVMag7lklomQKNCj-fpl2POwWdVncN_A/edit?gid=576457136#gid=576457136"
+        if not date_to_sheet_id:
+            st.warning("⚠️ Keine Tagesdateien im Ordner gefunden.")
+            st.stop()
 
-        st.info(f"📎 Verwendete Google Sheets URL: [Link]({sheet_url})")
+        day_tab1 = st.selectbox("📅 Datum auswählen", sorted(date_to_sheet_id.keys()), key="day_select_tab1")
+        spreadsheet_id = date_to_sheet_id[day_tab1]
+
+        sheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
+
+        st.info(f"📎 Tagesdatei: {day_tab1} — [Link]({sheet_url})")
+    
 
         if sheet_url:
             st.markdown("---")
