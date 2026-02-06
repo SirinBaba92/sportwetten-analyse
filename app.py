@@ -471,6 +471,9 @@ def display_stake_recommendation(
                     profit=stake_info["potential_win"],
                     market=market_name,
                 )
+                # Lösche den Bankroll-Input Widget-State damit er den neuen Wert liest
+                if "sidebar_bankroll_input" in st.session_state:
+                    del st.session_state["sidebar_bankroll_input"]
                 st.success(f"✅ +€{stake_info['potential_win']} Gewinn simuliert!")
                 st.rerun()
 
@@ -486,6 +489,9 @@ def display_stake_recommendation(
                     profit=-stake_info["potential_loss"],
                     market=market_name,
                 )
+                # Lösche den Bankroll-Input Widget-State damit er den neuen Wert liest
+                if "sidebar_bankroll_input" in st.session_state:
+                    del st.session_state["sidebar_bankroll_input"]
                 st.error(f"❌ -€{stake_info['potential_loss']} Verlust simuliert!")
                 st.rerun()
 
@@ -4755,19 +4761,26 @@ def show_sidebar():
         st.markdown("---")
         st.subheader("💰 RISIKO-MANAGEMENT")
 
-        # Bankroll Input - disabled im Demo-Modus um automatische Updates zu zeigen
-        bankroll = st.number_input(
-            "Aktuelle Bankroll (€)",
-            min_value=10.0,
-            max_value=100000.0,
-            value=st.session_state.risk_management["bankroll"],
-            step=50.0,
-            help="Dein aktuelles Wett-Kapital (wird automatisch durch simulierte Wetten aktualisiert)",
-            key="sidebar_bankroll_input",
-            disabled=st.session_state.get("enable_demo_mode", False),
-        )
-        # Nur im nicht-Demo-Modus den Wert zurückschreiben
-        if not st.session_state.get("enable_demo_mode", False):
+        # Bankroll Anzeige/Input
+        if st.session_state.get("enable_demo_mode", False):
+            # Im Demo-Modus: Zeige als Metric (read-only)
+            current_bankroll = st.session_state.risk_management["bankroll"]
+            st.metric(
+                "Aktuelle Bankroll",
+                f"€{current_bankroll:,.2f}",
+                help="Wird automatisch durch simulierte Wetten aktualisiert"
+            )
+        else:
+            # Normaler Modus: Zeige als editierbares Input
+            bankroll = st.number_input(
+                "Aktuelle Bankroll (€)",
+                min_value=10.0,
+                max_value=100000.0,
+                value=st.session_state.risk_management["bankroll"],
+                step=50.0,
+                help="Dein aktuelles Wett-Kapital",
+                key="sidebar_bankroll_input",
+            )
             st.session_state.risk_management["bankroll"] = bankroll
 
         risk_profile = st.selectbox(
