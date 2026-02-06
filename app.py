@@ -5510,29 +5510,29 @@ def main():
         if "current_month" not in st.session_state:
             st.session_state.current_month = date(today.year, today.month, 1)
 
-    # ---- Navigation ----
-    col_prev, col_title, col_next = st.columns([1, 2, 1])
-    with col_prev:
-        if st.button("←", key="month_prev"):
-            m = st.session_state.current_month
-            st.session_state.current_month = (
-                date(m.year - 1, 12, 1)
-                if m.month == 1
-                else date(m.year, m.month - 1, 1)
-            )
+        # ---- Navigation ----
+        col_prev, col_title, col_next = st.columns([1, 2, 1])
+        with col_prev:
+            if st.button("←", key="month_prev"):
+                m = st.session_state.current_month
+                st.session_state.current_month = (
+                    date(m.year - 1, 12, 1)
+                    if m.month == 1
+                    else date(m.year, m.month - 1, 1)
+                )
 
-    with col_title:
-        m = st.session_state.current_month
-        st.markdown(f"### {m.strftime('%B %Y')}")
-
-    with col_next:
-        if st.button("→", key="month_next"):
+        with col_title:
             m = st.session_state.current_month
-            st.session_state.current_month = (
-                date(m.year + 1, 1, 1)
-                if m.month == 12
-                else date(m.year, m.month + 1, 1)
-            )
+            st.markdown(f"### {m.strftime('%B %Y')}")
+
+        with col_next:
+            if st.button("→", key="month_next"):
+                m = st.session_state.current_month
+                st.session_state.current_month = (
+                    date(m.year + 1, 1, 1)
+                    if m.month == 12
+                    else date(m.year, m.month + 1, 1)
+                )
 
     # ---- Verfügbare Tage vorbereiten ----
     available_dates = [parse_date(d) for d in date_to_sheet_id.keys()]
