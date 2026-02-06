@@ -4852,6 +4852,13 @@ def main():
     date_to_sheet_id = list_daily_sheets_in_folder(folder_id)
 
     st.info(f"📅 Gefundene Tagesdateien: {len(date_to_sheet_id)}")
+# ---- Manuelles Refresh (Cache leeren) ----
+    if st.button("🔄 Daten aktualisieren", key="refresh_all"):
+        st.cache_data.clear()
+# optional: Auswahl zurücksetzen
+        st.session_state.pop("selected_day", None)
+        st.session_state.pop("current_month", None)
+        st.rerun()
 
 # ---- Auto-Vorwahl (nur wenn noch nichts gewählt ist) ----
     if date_to_sheet_id and "selected_day" not in st.session_state:
