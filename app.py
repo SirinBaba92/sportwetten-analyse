@@ -468,57 +468,63 @@ def display_stake_recommendation(
         if "pending_demo_actions" not in st.session_state:
             st.session_state.pending_demo_actions = []
         
-        # Callback-Funktionen für Buttons
-        def on_win_click():
-            old_bankroll = st.session_state.risk_management["bankroll"]
-            add_to_stake_history(
-                match_info=match_info,
-                stake=stake_info["recommended_stake"],
-                profit=stake_info["potential_win"],
-                market=market_name,
-            )
-            new_bankroll = st.session_state.risk_management["bankroll"]
-            # Speichere Action in Liste (ohne Rerun)
-            st.session_state.pending_demo_actions.append({
-                "type": "success",
-                "message": f"✅ {market_name}: +€{stake_info['potential_win']:.2f} (€{old_bankroll:.2f} → €{new_bankroll:.2f})"
-            })
-            if "sidebar_bankroll_input" in st.session_state:
-                del st.session_state["sidebar_bankroll_input"]
-        
-        def on_loss_click():
-            old_bankroll = st.session_state.risk_management["bankroll"]
-            add_to_stake_history(
-                match_info=match_info,
-                stake=stake_info["recommended_stake"],
-                profit=-stake_info["potential_loss"],
-                market=market_name,
-            )
-            new_bankroll = st.session_state.risk_management["bankroll"]
-            # Speichere Action in Liste (ohne Rerun)
-            st.session_state.pending_demo_actions.append({
-                "type": "error",
-                "message": f"❌ {market_name}: -€{stake_info['potential_loss']:.2f} (€{old_bankroll:.2f} → €{new_bankroll:.2f})"
-            })
-            if "sidebar_bankroll_input" in st.session_state:
-                del st.session_state["sidebar_bankroll_input"]
-        
         col_sim1, col_sim2 = st.columns(2)
         with col_sim1:
-            st.button(
-                f"✅ {market_name} GEWINN simulieren",
+            # Erstelle unique key für diesen spezifischen Button
+            win_key = f"win_{market_name}_{hash(match_info)}"
+            if st.button(
+                f"✅ {market_name} GEWINN",
                 use_container_width=True,
-                key=f"win_{market_name}_{hash(match_info)}",
-                on_click=on_win_click,
-            )
+                key=win_key,
+            ):
+                old_bankroll = st.session_state.risk_management["bankroll"]
+                add_to_stake_history(
+                    match_info=match_info,
+                    stake=stake_info["recommended_stake"],
+                    profit=stake_info["potential_win"],
+                    market=market_name,
+                )
+                new_bankroll = st.session_state.risk_management["bankroll"]
+                # Füge zur pending list hinzu
+                st.session_state.pending_demo_actions.append({
+                    "type": "success",
+                    "message": f"✅ {market_name}: +€{stake_info['potential_win']:.2f} (€{old_bankroll:.2f} → €{new_bankroll:.2f})"
+                })
+                if "sidebar_bankroll_input" in st.session_state:
+                    del st.session_state["sidebar_bankroll_input"]
         
         with col_sim2:
-            st.button(
-                f"❌ {market_name} VERLUST simulieren",
+            # Erstelle unique key für diesen spezifischen Button
+            loss_key = f"loss_{market_name}_{hash(match_info)}"
+            if st.button(
+                f"❌ {market_name} VERLUST",
                 use_container_width=True,
-                key=f"loss_{market_name}_{hash(match_info)}",
-                on_click=on_loss_click,
-            )
+                key=loss_key,
+            ):
+                old_bankroll = st.session_state.risk_management["bankroll"]
+                add_to_stake_history(
+                    match_info=match_info,
+                    stake=stake_info["recommended_stake"],
+                    profit=-stake_info["potential_loss"],
+                    market=market_name,
+                )
+                new_bankroll = st.session_state.risk_management["bankroll"]
+                # Füge zur pending list hinzu
+                st.session_state.pending_demo_actions.append({
+                    "type": "error",
+                    "message": f"❌ {market_name}: -€{stake_info['potential_loss']:.2f} (€{old_bankroll:.2f} → €{new_bankroll:.2f})"
+                })
+                if "sidebar_bankroll_input" in st.session_state:
+                    del st.session_state["sidebar_bankroll_input"]
+        
+        # Zeige die gesammelten Aktionen SOFORT unter den Buttons
+        if st.session_state.pending_demo_actions:
+            st.markdown("**Simulierte Wetten:**")
+            for action in st.session_state.pending_demo_actions:
+                if action["type"] == "success":
+                    st.success(action["message"], icon="✅")
+                else:
+                    st.error(action["message"], icon="❌")
 
     with st.expander("📊 Detaillierte Einsatz-Analyse", expanded=False):
         col_a, col_b, col_c = st.columns(3)
