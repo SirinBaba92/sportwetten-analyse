@@ -6114,13 +6114,7 @@ def main():
             st.subheader("🎮 Demo-Wetten Simulation")
             st.info("💡 Wähle deine Wetten aus. Die Seite lädt erst neu wenn du auf 'Wetten bestätigen' klickst!")
             
-            # DEBUG: Zeige was in demo_bet_options ist
-            st.write(f"🔵 DEBUG: {len(st.session_state.demo_bet_options)} Wettoptionen gefunden")
-            for opt in st.session_state.demo_bet_options:
-                st.write(f"🔵 DEBUG: - {opt['market']}: +€{opt['potential_win']:.2f} / -€{opt['potential_loss']:.2f}")
-            
             with st.form("demo_bets_form"):
-                st.write("🔵 DEBUG: INSIDE Form - Zeige Checkboxen")
                 import pandas as pd
                 
                 # Zeige alle Wettoptionen
@@ -6143,14 +6137,8 @@ def main():
                 # Submit Button
                 submitted = st.form_submit_button("✅ Wetten bestätigen & Bankroll aktualisieren", use_container_width=True, type="primary")
             
-            # DEBUG: Zeige ob submitted True ist
-            st.write(f"🟡 DEBUG: submitted = {submitted}")
-            st.write(f"🟡 DEBUG: Form wurde {'SUBMITTED' if submitted else 'NICHT submitted'}")
-            
             # NACH dem Form: Verarbeite die Auswahl
             if submitted:
-                st.write("🔴 DEBUG: Submit wurde geklickt!")
-                
                 # Jetzt lesen wir die Checkbox-States aus st.session_state
                 selections = []
                 
@@ -6160,8 +6148,6 @@ def main():
                     
                     win_checked = st.session_state.get(win_key, False)
                     loss_checked = st.session_state.get(loss_key, False)
-                    
-                    st.write(f"🔴 DEBUG: {option['market']} - Win={win_checked}, Loss={loss_checked}")
                     
                     if win_checked and loss_checked:
                         st.warning(f"⚠️ {option['market']}: Beide ausgewählt - wird übersprungen!")
@@ -6182,15 +6168,9 @@ def main():
                             "stake": option["stake"],
                         })
                 
-                st.write(f"🔴 DEBUG: {len(selections)} Wetten ausgewählt")
-                
                 if selections:
                     # Verarbeite alle Wetten
-                    old_bankroll = st.session_state.risk_management["bankroll"]
-                    st.write(f"🔴 DEBUG: Alte Bankroll = €{old_bankroll:.2f}")
-                    
                     for sel in selections:
-                        st.write(f"🔴 DEBUG: Verarbeite {sel['market']}: {sel['profit']:+.2f}€")
                         add_to_stake_history(
                             match_info=sel["match_info"],
                             stake=sel["stake"],
@@ -6198,16 +6178,12 @@ def main():
                             market=sel["market"],
                         )
                     
-                    new_bankroll = st.session_state.risk_management["bankroll"]
-                    st.write(f"🔴 DEBUG: Neue Bankroll = €{new_bankroll:.2f}")
-                    st.write(f"🔴 DEBUG: History Länge = {len(st.session_state.risk_management['stake_history'])}")
-                    
                     # Reset
                     st.session_state.demo_bet_options = []
                     # Lösche alle Form-Keys
-                    for option in st.session_state.demo_bet_options:
-                        win_key = f"form_win_{option['unique_id']}"
-                        loss_key = f"form_loss_{option['unique_id']}"
+                    for sel in selections:
+                        win_key = f"form_win_{sel['market']}_{hash(sel['match_info'])}"
+                        loss_key = f"form_loss_{sel['market']}_{hash(sel['match_info'])}"
                         if win_key in st.session_state:
                             del st.session_state[win_key]
                         if loss_key in st.session_state:
@@ -6217,7 +6193,6 @@ def main():
                         del st.session_state["sidebar_bankroll_input"]
                     
                     st.success(f"✅ {len(selections)} Wette(n) zur Bankroll hinzugefügt!")
-                    st.write("🔴 DEBUG: Rerun wird aufgerufen...")
                     st.rerun()
                 else:
                     st.warning("⚠️ Keine Wetten ausgewählt!")
