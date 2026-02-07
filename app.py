@@ -5515,6 +5515,10 @@ def main():
         ["📊 Match-Analyse", "🧠 ML-Training", "📚 Trainingsdaten", "📈 Statistiken"]
     )
     with tab1:
+        # Reset demo_bet_options bei jedem Laden von Tab1
+        if st.session_state.get("enable_demo_mode", False):
+            st.session_state.demo_bet_options = []
+        
         # ---- Monat-State initialisieren (Start = aktueller Monat) ----
         today = date.today()
         if "current_month" not in st.session_state:
@@ -5934,78 +5938,87 @@ def main():
                                         st.markdown("---")
                                         display_results(result)
                                         
-                                        # Zeige zentrale Demo-Wettauswahl
+                                        # Zeige zentrale Demo-Wettauswahl mit data_editor
                                         if st.session_state.get("enable_demo_mode", False):
                                             if st.session_state.get("demo_bet_options", []):
                                                 st.markdown("---")
                                                 st.subheader("🎮 Demo-Wetten für dieses Match")
-                                                st.info("Wähle die Wetten aus, die du simulieren möchtest. Buttons togglen bei jedem Klick.")
+                                                st.info("✅ = GEWINN | ❌ = VERLUST | Beide unchecked = Nicht wetten")
                                                 
-                                                # Initialisiere demo_selections
-                                                if "demo_selections" not in st.session_state:
-                                                    st.session_state.demo_selections = {}
+                                                # Erstelle DataFrame für data_editor
+                                                import pandas as pd
                                                 
-                                                # Zeige alle verfügbaren Wettoptionen
+                                                bet_data = []
                                                 for option in st.session_state.demo_bet_options:
-                                                    st.markdown(f"**{option['market']}**")
-                                                    
-                                                    col1, col2, col3 = st.columns([5, 5, 2])
-                                                    
-                                                    unique_id = option["unique_id"]
-                                                    current_selection = st.session_state.demo_selections.get(unique_id, {})
-                                                    
-                                                    with col1:
-                                                        if st.button(
-                                                            f"{'✅' if current_selection.get('type') == 'win' else '◯'} GEWINN (+€{option['potential_win']:.2f})",
-                                                            key=f"final_win_{unique_id}",
-                                                            use_container_width=True,
-                                                            type="primary" if current_selection.get('type') == 'win' else "secondary"
-                                                        ):
-                                                            if current_selection.get('type') == 'win':
-                                                                del st.session_state.demo_selections[unique_id]
-                                                            else:
-                                                                st.session_state.demo_selections[unique_id] = {
-                                                                    "market": option["market"],
-                                                                    "match_info": option["match_info"],
-                                                                    "type": "win",
-                                                                    "profit": option["potential_win"],
-                                                                    "stake": option["stake"],
-                                                                }
-                                                    
-                                                    with col2:
-                                                        if st.button(
-                                                            f"{'❌' if current_selection.get('type') == 'loss' else '◯'} VERLUST (-€{option['potential_loss']:.2f})",
-                                                            key=f"final_loss_{unique_id}",
-                                                            use_container_width=True,
-                                                            type="primary" if current_selection.get('type') == 'loss' else "secondary"
-                                                        ):
-                                                            if current_selection.get('type') == 'loss':
-                                                                del st.session_state.demo_selections[unique_id]
-                                                            else:
-                                                                st.session_state.demo_selections[unique_id] = {
-                                                                    "market": option["market"],
-                                                                    "match_info": option["match_info"],
-                                                                    "type": "loss",
-                                                                    "profit": -option["potential_loss"],
-                                                                    "stake": option["stake"],
-                                                                }
-                                                    
-                                                    with col3:
-                                                        if current_selection:
-                                                            st.success("✓" if current_selection.get('type') == 'win' else "✗")
+                                                    bet_data.append({
+                                                        "Market": option["market"],
+                                                        "✅ GEWINN": False,
+                                                        "Gewinn €": f"+{option['potential_win']:.2f}",
+                                                        "❌ VERLUST": False,
+                                                        "Verlust €": f"-{option['potential_loss']:.2f}",
+                                                        "_unique_id": option["unique_id"],
+                                                        "_match_info": option["match_info"],
+                                                        "_stake": option["stake"],
+                                                        "_win_amount": option["potential_win"],
+                                                        "_loss_amount": option["potential_loss"],
+                                                    })
                                                 
-                                                # Zeige Zusammenfassung wenn Auswahlen existieren
-                                                if st.session_state.demo_selections:
-                                                    st.markdown("---")
-                                                    st.markdown("**Ausgewählte Wetten:**")
+                                                df = pd.DataFrame(bet_data)
+                                                
+                                                # Data Editor für Auswahl
+                                                edited_df = st.data_editor(
+                                                    df[["Market", "✅ GEWINN", "Gewinn €", "❌ VERLUST", "Verlust €"]],
+                                                    hide_index=True,
+                                                    use_container_width=True,
+                                                    key="demo_bet_editor",
+                                                    column_config={
+                                                        "Market": st.column_config.TextColumn("Markt", width="medium"),
+                                                        "✅ GEWINN": st.column_config.CheckboxColumn("✅ GEWINN", width="small"),
+                                                        "Gewinn €": st.column_config.TextColumn("Betrag", width="small"),
+                                                        "❌ VERLUST": st.column_config.CheckboxColumn("❌ VERLUST", width="small"),
+                                                        "Verlust €": st.column_config.TextColumn("Betrag", width="small"),
+                                                    }
+                                                )
+                                                
+                                                # Verarbeite die Auswahl
+                                                selections = []
+                                                total_profit = 0
+                                                
+                                                for idx, row in edited_df.iterrows():
+                                                    win_checked = row["✅ GEWINN"]
+                                                    loss_checked = row["❌ VERLUST"]
                                                     
-                                                    total_profit = 0
-                                                    for selection in st.session_state.demo_selections.values():
-                                                        total_profit += selection["profit"]
-                                                        if selection["type"] == "win":
-                                                            st.success(f"✅ {selection['market']}: +€{selection['profit']:.2f}")
+                                                    if win_checked and loss_checked:
+                                                        st.warning(f"⚠️ {row['Market']}: Bitte nur GEWINN oder VERLUST wählen, nicht beides!")
+                                                    elif win_checked:
+                                                        selections.append({
+                                                            "market": df.iloc[idx]["Market"],
+                                                            "type": "win",
+                                                            "profit": df.iloc[idx]["_win_amount"],
+                                                            "match_info": df.iloc[idx]["_match_info"],
+                                                            "stake": df.iloc[idx]["_stake"],
+                                                        })
+                                                        total_profit += df.iloc[idx]["_win_amount"]
+                                                    elif loss_checked:
+                                                        selections.append({
+                                                            "market": df.iloc[idx]["Market"],
+                                                            "type": "loss",
+                                                            "profit": -df.iloc[idx]["_loss_amount"],
+                                                            "match_info": df.iloc[idx]["_match_info"],
+                                                            "stake": df.iloc[idx]["_stake"],
+                                                        })
+                                                        total_profit -= df.iloc[idx]["_loss_amount"]
+                                                
+                                                # Zeige Zusammenfassung
+                                                if selections:
+                                                    st.markdown("---")
+                                                    st.markdown("**📋 Zusammenfassung:**")
+                                                    
+                                                    for sel in selections:
+                                                        if sel["type"] == "win":
+                                                            st.success(f"✅ {sel['market']}: +€{sel['profit']:.2f}")
                                                         else:
-                                                            st.error(f"❌ {selection['market']}: {selection['profit']:.2f}€")
+                                                            st.error(f"❌ {sel['market']}: {sel['profit']:.2f}€")
                                                     
                                                     current_bankroll = st.session_state.risk_management["bankroll"]
                                                     new_bankroll = current_bankroll + total_profit
@@ -6013,15 +6026,15 @@ def main():
                                                     
                                                     col_a, col_b = st.columns([3, 2])
                                                     with col_a:
-                                                        if st.button("✅ Wetten bestätigen & Bankroll aktualisieren", use_container_width=True, type="primary", key="confirm_bets"):
-                                                            for selection in st.session_state.demo_selections.values():
+                                                        if st.button("✅ Wetten bestätigen & Bankroll aktualisieren", use_container_width=True, type="primary", key="confirm_all_bets"):
+                                                            for sel in selections:
                                                                 add_to_stake_history(
-                                                                    match_info=selection["match_info"],
-                                                                    stake=selection["stake"],
-                                                                    profit=selection["profit"],
-                                                                    market=selection["market"],
+                                                                    match_info=sel["match_info"],
+                                                                    stake=sel["stake"],
+                                                                    profit=sel["profit"],
+                                                                    market=sel["market"],
                                                                 )
-                                                            st.session_state.demo_selections = {}
+                                                            # Reset
                                                             st.session_state.demo_bet_options = []
                                                             if "sidebar_bankroll_input" in st.session_state:
                                                                 del st.session_state["sidebar_bankroll_input"]
@@ -6029,8 +6042,7 @@ def main():
                                                             st.rerun()
                                                     
                                                     with col_b:
-                                                        if st.button("🗑️ Alle Auswahlen löschen", use_container_width=True, key="clear_selections"):
-                                                            st.session_state.demo_selections = {}
+                                                        if st.button("🗑️ Auswahl zurücksetzen", use_container_width=True, key="reset_editor"):
                                                             st.rerun()
 
 
