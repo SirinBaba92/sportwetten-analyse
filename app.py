@@ -464,75 +464,54 @@ def display_stake_recommendation(
     
     if demo_mode_active and match_info:
         
-        # Initialisiere pending_demo_actions wenn nicht vorhanden
-        if "pending_demo_actions" not in st.session_state:
-            st.session_state.pending_demo_actions = []
-        
+        # Verwende Checkboxen statt Buttons - diese behalten ihren State
         col_sim1, col_sim2 = st.columns(2)
+        
+        # Unique keys für diese spezifische Wette
+        win_checkbox_key = f"demo_win_{market_name}_{hash(match_info)}"
+        loss_checkbox_key = f"demo_loss_{market_name}_{hash(match_info)}"
+        
         with col_sim1:
-            # Erstelle unique key für diesen spezifischen Button
-            win_key = f"win_{market_name}_{hash(match_info)}"
-            if st.button(
-                f"✅ {market_name} GEWINN",
-                use_container_width=True,
-                key=win_key,
-            ):
-                old_bankroll = st.session_state.risk_management["bankroll"]
-                st.write(f"🔴 DEBUG GEWINN: Alte Bankroll = €{old_bankroll:.2f}")
-                
-                add_to_stake_history(
-                    match_info=match_info,
-                    stake=stake_info["recommended_stake"],
-                    profit=stake_info["potential_win"],
-                    market=market_name,
-                )
-                
-                new_bankroll = st.session_state.risk_management["bankroll"]
-                st.write(f"🔴 DEBUG GEWINN: Neue Bankroll = €{new_bankroll:.2f}")
-                st.write(f"🔴 DEBUG GEWINN: History Länge = {len(st.session_state.risk_management['stake_history'])}")
-                
-                # Füge zur pending list hinzu
-                st.session_state.pending_demo_actions.append({
-                    "type": "success",
-                    "message": f"✅ {market_name}: +€{stake_info['potential_win']:.2f} (€{old_bankroll:.2f} → €{new_bankroll:.2f})"
-                })
-                st.write(f"🔴 DEBUG GEWINN: Pending actions = {len(st.session_state.pending_demo_actions)}")
-                
-                if "sidebar_bankroll_input" in st.session_state:
-                    del st.session_state["sidebar_bankroll_input"]
+            win_checked = st.checkbox(
+                f"✅ {market_name} GEWINN (+€{stake_info['potential_win']:.2f})",
+                key=win_checkbox_key,
+            )
         
         with col_sim2:
-            # Erstelle unique key für diesen spezifischen Button
-            loss_key = f"loss_{market_name}_{hash(match_info)}"
-            if st.button(
-                f"❌ {market_name} VERLUST",
-                use_container_width=True,
-                key=loss_key,
-            ):
-                old_bankroll = st.session_state.risk_management["bankroll"]
-                add_to_stake_history(
-                    match_info=match_info,
-                    stake=stake_info["recommended_stake"],
-                    profit=-stake_info["potential_loss"],
-                    market=market_name,
-                )
-                new_bankroll = st.session_state.risk_management["bankroll"]
-                # Füge zur pending list hinzu
-                st.session_state.pending_demo_actions.append({
-                    "type": "error",
-                    "message": f"❌ {market_name}: -€{stake_info['potential_loss']:.2f} (€{old_bankroll:.2f} → €{new_bankroll:.2f})"
-                })
-                if "sidebar_bankroll_input" in st.session_state:
-                    del st.session_state["sidebar_bankroll_input"]
+            loss_checked = st.checkbox(
+                f"❌ {market_name} VERLUST (-€{stake_info['potential_loss']:.2f})",
+                key=loss_checkbox_key,
+            )
         
-        # Zeige die gesammelten Aktionen SOFORT unter den Buttons
-        if st.session_state.pending_demo_actions:
-            st.markdown("**Simulierte Wetten:**")
-            for action in st.session_state.pending_demo_actions:
-                if action["type"] == "success":
-                    st.success(action["message"], icon="✅")
-                else:
-                    st.error(action["message"], icon="❌")
+        # Verhindere dass beide gleichzeitig ausgewählt sind
+        if win_checked and loss_checked:
+            st.warning(f"⚠️ Bitte wähle nur GEWINN oder VERLUST für {market_name}, nicht beides!")
+        
+        # Speichere die Auswahl im Session State für später
+        if "demo_selections" not in st.session_state:
+            st.session_state.demo_selections = {}
+        
+        market_key = f"{market_name}_{hash(match_info)}"
+        if win_checked and not loss_checked:
+            st.session_state.demo_selections[market_key] = {
+                "market": market_name,
+                "match_info": match_info,
+                "type": "win",
+                "profit": stake_info["potential_win"],
+                "stake": stake_info["recommended_stake"],
+            }
+        elif loss_checked and not win_checked:
+            st.session_state.demo_selections[market_key] = {
+                "market": market_name,
+                "match_info": match_info,
+                "type": "loss",
+                "profit": -stake_info["potential_loss"],
+                "stake": stake_info["recommended_stake"],
+            }
+        elif not win_checked and not loss_checked:
+            # Beide unchecked - entferne aus selections
+            if market_key in st.session_state.demo_selections:
+                del st.session_state.demo_selections[market_key]
 
     with st.expander("📊 Detaillierte Einsatz-Analyse", expanded=False):
         col_a, col_b, col_c = st.columns(3)
@@ -5984,43 +5963,53 @@ def main():
                                         st.markdown("---")
                                         display_results(result)
                                         
-                                        # Zeige Demo-Wetten Zusammenfassung und Aktualisieren-Button
+                                        # Zeige Demo-Wetten Zusammenfassung und Bestätigen-Button
                                         if st.session_state.get("enable_demo_mode", False):
-                                            if st.session_state.get("pending_demo_actions", []):
+                                            if st.session_state.get("demo_selections", {}):
                                                 st.markdown("---")
-                                                st.subheader("🎮 Simulierte Wetten für dieses Match")
+                                                st.subheader("🎮 Ausgewählte Wetten")
                                                 
-                                                # Zeige alle pending actions
-                                                for action in st.session_state.pending_demo_actions:
-                                                    if action["type"] == "success":
-                                                        st.success(action["message"])
+                                                # Berechne Gesamteffekt
+                                                total_profit = 0
+                                                for selection in st.session_state.demo_selections.values():
+                                                    total_profit += selection["profit"]
+                                                    if selection["type"] == "win":
+                                                        st.success(f"✅ {selection['market']}: +€{selection['profit']:.2f}")
                                                     else:
-                                                        st.error(action["message"])
+                                                        st.error(f"❌ {selection['market']}: €{selection['profit']:.2f}")
                                                 
-                                                # Zeige aktuelle Bankroll Info
+                                                # Zeige voraussichtliche neue Bankroll
                                                 current_bankroll = st.session_state.risk_management["bankroll"]
-                                                num_actions = len(st.session_state.pending_demo_actions)
-                                                history_len = len(st.session_state.risk_management.get("stake_history", []))
-                                                st.info(f"💰 Aktuelle Bankroll: €{current_bankroll:,.2f} | {num_actions} Wette(n) | Historie: {history_len} Einträge")
+                                                new_bankroll = current_bankroll + total_profit
+                                                st.info(f"💰 Bankroll: €{current_bankroll:,.2f} → €{new_bankroll:,.2f} (Änderung: {total_profit:+.2f}€)")
                                                 
-                                                # Aktualisieren Button
+                                                # Bestätigen Button
                                                 col1, col2 = st.columns([2, 1])
                                                 with col1:
-                                                    if st.button("🔄 Sidebar aktualisieren", use_container_width=True, type="primary"):
-                                                        st.session_state.pending_demo_actions = []
+                                                    if st.button("✅ Wetten bestätigen & Bankroll aktualisieren", use_container_width=True, type="primary"):
+                                                        # Verarbeite alle Auswahlen
+                                                        for selection in st.session_state.demo_selections.values():
+                                                            add_to_stake_history(
+                                                                match_info=selection["match_info"],
+                                                                stake=selection["stake"],
+                                                                profit=selection["profit"],
+                                                                market=selection["market"],
+                                                            )
+                                                        # Lösche Auswahlen und unchecke alle Checkboxen
+                                                        for key in list(st.session_state.keys()):
+                                                            if key.startswith("demo_win_") or key.startswith("demo_loss_"):
+                                                                del st.session_state[key]
+                                                        st.session_state.demo_selections = {}
+                                                        if "sidebar_bankroll_input" in st.session_state:
+                                                            del st.session_state["sidebar_bankroll_input"]
                                                         st.rerun()
                                                 with col2:
-                                                    if st.button("❌ Verwerfen", use_container_width=True):
-                                                        # Rückgängig machen - entferne die letzten Aktionen
-                                                        num_actions = len(st.session_state.pending_demo_actions)
-                                                        # Entferne die entsprechenden Historie-Einträge
-                                                        st.session_state.risk_management["stake_history"] = st.session_state.risk_management["stake_history"][:-num_actions]
-                                                        # Berechne Bankroll neu
-                                                        st.session_state.risk_management["bankroll"] = 1000.0  # Reset oder berechne aus Historie
-                                                        if st.session_state.risk_management["stake_history"]:
-                                                            for entry in st.session_state.risk_management["stake_history"]:
-                                                                st.session_state.risk_management["bankroll"] += entry["profit"]
-                                                        st.session_state.pending_demo_actions = []
+                                                    if st.button("❌ Auswahl löschen", use_container_width=True):
+                                                        # Lösche alle Auswahlen und unchecke Checkboxen
+                                                        for key in list(st.session_state.keys()):
+                                                            if key.startswith("demo_win_") or key.startswith("demo_loss_"):
+                                                                del st.session_state[key]
+                                                        st.session_state.demo_selections = {}
                                                         st.rerun()
 
 
