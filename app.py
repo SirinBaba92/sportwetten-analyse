@@ -17,7 +17,7 @@ DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
 st.set_page_config(
-    page_title="Sportwetten-Prognose v5.2 xG+ Enhanced",
+    page_title="Sportwetten-Prognose v5.0 (SMART-PRECISION)",
     page_icon="⚽",
     layout="wide",
 )
@@ -578,7 +578,7 @@ def save_prediction_to_sheets(
         match_str = f"{match_info['home']} vs {match_info['away']}"
         mu_total = mu_info.get("total", 0.0)
 
-        version = "v5.2 xG+"
+        version = "v4.7+"
 
         values = [
             [
@@ -2328,182 +2328,6 @@ class ExtendedMatchML:
             }
 
 
-# ==================== v5.2 xG+ HILFSFUNKTIONEN ====================
-
-
-def calculate_weighted_mu(xg: float, actual_goals: float, games: int) -> float:
-    """
-    Intelligente Gewichtung von xG vs. tatsächlichen Toren
-    Mehr Spiele = mehr Vertrauen in xG (max 70% nach 15+ Spielen)
-    """
-    if games <= 0:
-        return xg
-    
-    xg_weight = min(0.7, games / 15)
-    actual_weight = 1 - xg_weight
-    
-    return (xg * xg_weight) + (actual_goals * actual_weight)
-
-
-def calculate_xg_overperformance(team_xg: float, team_actual_goals: float) -> float:
-    """
-    Berechnet xG-Über/Unterperformance
-    Positiv = Glück (mehr Tore als xG), Negativ = Pech (weniger Tore als xG)
-    """
-    return team_actual_goals - team_xg
-
-
-def apply_regression_correction(mu: float, xg_overperformance: float) -> float:
-    """
-    Wendet Regression zum Mittelwert an
-    Hohe Overperformance → Reduktion (Glück wird nicht ewig anhalten)
-    Hohe Underperformance → Steigerung (Pech wird sich ausgleichen)
-    Max 15% Korrektur (±0.15 pro 1.0 Over/Underperformance)
-    """
-    correction_factor = 1 - (xg_overperformance * 0.15)
-    
-    # Limit auf ±20%
-    correction_factor = max(0.8, min(1.2, correction_factor))
-    
-    return mu * correction_factor
-
-
-def calculate_advanced_tki(goals_conceded: float, xg_against: float) -> float:
-    """
-    Verbesserter TKI (Torhüter-Krisen-Index)
-    """
-    return max(0, goals_conceded - xg_against)
-
-
-def apply_tki_boost_conservative(mu: float, opponent_tki: float) -> float:
-    """
-    Vorsichtigerer TKI-Boost (25% statt 40% in v5.0)
-    """
-    boost_factor = 1 + (opponent_tki * 0.25)
-    return mu * boost_factor
-
-
-def analyze_shot_quality(shots_per_match: float, xg_for: float, conversion_rate: float) -> float:
-    """
-    Analysiert Schussqualität
-    Niedrige Conversion Rate + viele Schüsse = schlechte Qualität
-    Hohes xG/Schuss = gute Qualität
-    """
-    if shots_per_match <= 0:
-        return 1.0
-    
-    xg_per_shot = xg_for / shots_per_match if shots_per_match > 0 else 0
-    quality_score = 1.0
-    
-    # Viele Schüsse + niedrige Conversion = schlechte Qualität
-    if shots_per_match > 15 and conversion_rate < 10:
-        quality_score *= 0.9  # -10%
-    
-    # Hohes xG/Schuss = gute Qualität
-    if xg_per_shot > 0.12:  # Überdurchschnittlich
-        quality_score *= 1.05  # +5%
-    elif xg_per_shot < 0.08:  # Unterdurchschnittlich
-        quality_score *= 0.95  # -5%
-    
-    return quality_score
-
-
-def analyze_defensive_strength(cs_rate: float) -> float:
-    """
-    Analysiert defensive Stärke basierend auf Clean Sheets
-    Hohe CS-Rate = starke Defensive → reduziert gegnerische μ
-    """
-    defensive_score = 1.0
-    
-    if cs_rate > 0.4:  # >40% Clean Sheets = sehr gut
-        defensive_score *= 0.85  # -15% gegnerische μ
-    elif cs_rate < 0.2:  # <20% Clean Sheets = schlecht
-        defensive_score *= 1.15  # +15% gegnerische μ
-    
-    return defensive_score
-
-
-def analyze_game_context(match: MatchData) -> Dict:
-    """
-    Analysiert Spiel-Kontext für Adjustments
-    """
-    context = {
-        'is_relegation_battle': False,
-        'is_top_match': False,
-        'h2h_high_scoring': False,
-        'must_win_home': False,
-        'must_win_away': False
-    }
-    
-    total_teams = 18  # Bundesliga Standard
-    
-    # Abstiegskampf erkennen (letzte 3 Plätze)
-    if (match.home_team.position >= total_teams - 3 or 
-        match.away_team.position >= total_teams - 3):
-        context['is_relegation_battle'] = True
-    
-    # Top-Spiel erkennen (beide in Top 6)
-    if (match.home_team.position <= 3 and 
-        match.away_team.position <= 6):
-        context['is_top_match'] = True
-    
-    # H2H High-Scoring History (10+ Tore in letzten 3 Spielen)
-    if match.h2h_results:
-        total_goals_last_3 = sum(
-            r.home_goals + r.away_goals 
-            for r in match.h2h_results[:3]
-        )
-        if total_goals_last_3 >= 10:
-            context['h2h_high_scoring'] = True
-    
-    # Must-Win Situationen (wenn < 10 Spiele verbleiben)
-    games_remaining = 34 - max(match.home_team.games, match.away_team.games)
-    if games_remaining < 10:
-        points_to_safety_home = 30 - match.home_team.points  # Beispiel-Schwelle
-        points_to_safety_away = 30 - match.away_team.points
-        
-        if points_to_safety_home > games_remaining * 1.5:
-            context['must_win_home'] = True
-        if points_to_safety_away > games_remaining * 1.5:
-            context['must_win_away'] = True
-    
-    return context
-
-
-def apply_context_adjustments(mu_home: float, mu_away: float, context: Dict) -> Tuple[float, float]:
-    """
-    Wendet Kontext-basierte Adjustments an
-    """
-    mu_home_adj = mu_home
-    mu_away_adj = mu_away
-    
-    # Abstiegskampf: Mehr Risiko, mehr Tore
-    if context['is_relegation_battle']:
-        mu_home_adj *= 1.15
-        mu_away_adj *= 1.15
-    
-    # Top-Spiel: Oft knapper, weniger Tore
-    if context['is_top_match']:
-        mu_home_adj *= 0.95
-        mu_away_adj *= 0.95
-    
-    # H2H High-Scoring: Mehr Tore erwarten
-    if context['h2h_high_scoring']:
-        mu_home_adj *= 1.10
-        mu_away_adj *= 1.10
-    
-    # Must-Win: Offensiver, mehr Tore
-    if context['must_win_home']:
-        mu_home_adj *= 1.10
-        mu_away_adj *= 0.95
-    
-    if context['must_win_away']:
-        mu_away_adj *= 1.10
-        mu_home_adj *= 0.95
-    
-    return mu_home_adj, mu_away_adj
-
-
 # ==================== ANALYSE-FUNKTIONEN ====================
 
 
@@ -3239,32 +3063,23 @@ def calculate_extended_risk_scores_strict(
     }
 
 
-def analyze_match_v52_enhanced(match: MatchData) -> Dict:
+def analyze_match_v47_ml(match: MatchData) -> Dict:
     """
-    v5.2 xG+ Enhanced - Kombiniert v5.2 xG-Verbesserungen mit v5.0 SMART-PRECISION
-    
-    NEU von v5.2:
-    - Intelligente xG-Gewichtung (mehr Spiele = mehr Vertrauen in xG)
-    - xG-Über/Unterperformance mit Regression zum Mittelwert
-    - Vorsichtigerer TKI-Boost (25% statt 40%)
-    - Schussqualitäts-Analyse
-    - Defensive Stärke basierend auf Clean Sheets
-    - Spiel-Kontext Analyse (Abstiegskampf, Top-Spiel, etc.)
-    
-    BEHALTEN von v5.0:
+    v5.0 mit v4.9 SMART-PRECISION LOGIK
+
+    NEU von v4.9:
     - Form-Faktoren Integration
     - TKI-Krise deaktiviert BTTS-Dominanz-Killer
-    - FTS-Check nur bei PPG > 1.0
+    - FTS-Check nur bei PPG > 1.0 (nicht 0.5)
     - Form-Boost bei starker Defensive reduziert
     - TKI-Krise überschreibt Form-Malus
     - Strengere Dominanz-Dämpfer
     - Auswärts-Underdog Boost
     - Verschärfte Clean Sheet Validierung
     - Conversion-Rate Adjustment
-    - ML-Korrektur Integration
     """
 
-    # ===== 1. DATEN-EXTRAKTION =====
+    # DATEN-EXTRAKTION
     s_c_ha = [
         match.home_team.goals_scored_per_match_ha,
         match.home_team.goals_conceded_per_match_ha,
@@ -3278,79 +3093,36 @@ def analyze_match_v52_enhanced(match: MatchData) -> Dict:
         match.away_team.xg_for_ha,
         match.away_team.xg_against_ha,
     ]
-    
+
     cs_rates = [match.home_team.cs_yes_ha * 100, match.away_team.cs_yes_ha * 100]
+
     ppg = [match.home_team.ppg_ha, match.away_team.ppg_ha]
+
     conv_rate = [
         match.home_team.conversion_rate * 100,
         match.away_team.conversion_rate * 100,
     ]
-    
+
     # Form-Daten
     form_ppg_h = match.home_team.form_points / 5
     form_ppg_a = match.away_team.form_points / 5
-    
+
     # Failed to Score
     fts_h = match.home_team.fts_yes_ha
     fts_a = match.away_team.fts_yes_ha
-    
-    
-    # ===== 2. v5.2 INTELLIGENTE μ-BERECHNUNG =====
-    # Statt einfach (xg + goals) / 2, nutzen wir intelligente Gewichtung
-    mu_h = calculate_weighted_mu(xg_ha[0], s_c_ha[0], match.home_team.games)
-    mu_a = calculate_weighted_mu(xg_ha[2], s_c_ha[2], match.away_team.games)
-    
-    
-    # ===== 3. v5.2 xG-ÜBER/UNTERPERFORMANCE MIT REGRESSION =====
-    home_xg_over = calculate_xg_overperformance(xg_ha[0], s_c_ha[0])
-    away_xg_over = calculate_xg_overperformance(xg_ha[2], s_c_ha[2])
-    
-    # Regression zum Mittelwert anwenden
-    mu_h = apply_regression_correction(mu_h, home_xg_over)
-    mu_a = apply_regression_correction(mu_a, away_xg_over)
-    
-    
-    # ===== 4. TKI BERECHNUNG (früh, für spätere Checks) =====
-    tki_h = calculate_advanced_tki(s_c_ha[1], xg_ha[1])
-    tki_a = calculate_advanced_tki(s_c_ha[3], xg_ha[3])
-    tki_combined = tki_h + tki_a
-    
-    
-    # ===== 5. v5.2 SCHUSSQUALITÄT & DEFENSIVE STÄRKE =====
-    home_shot_quality = analyze_shot_quality(
-        match.home_team.shots_per_match,
-        match.home_team.xg_for,
-        match.home_team.conversion_rate * 100
-    )
-    away_shot_quality = analyze_shot_quality(
-        match.away_team.shots_per_match,
-        match.away_team.xg_for,
-        match.away_team.conversion_rate * 100
-    )
-    
-    home_defensive = analyze_defensive_strength(match.home_team.cs_yes_ha)
-    away_defensive = analyze_defensive_strength(match.away_team.cs_yes_ha)
-    
-    # Gegnerische defensive Stärke reduziert eigene μ
-    mu_h *= away_defensive
-    mu_a *= home_defensive
-    
-    # Eigene Schussqualität
-    mu_h *= home_shot_quality
-    mu_a *= away_shot_quality
-    
-    
-    # ===== 6. v5.2 SPIEL-KONTEXT =====
-    context = analyze_game_context(match)
-    mu_h, mu_a = apply_context_adjustments(mu_h, mu_a, context)
-    
-    
-    # ===== 7. v5.0 FORM-FAKTOR (aus v4.9) =====
+
+    # --- v4.9 SMART-PRECISION LOGIK ---
+
+    # 1. BASIS μ
+    mu_h = (xg_ha[0] + s_c_ha[0]) / 2
+    mu_a = (xg_ha[2] + s_c_ha[2]) / 2
+
+    # 2. FORM-FAKTOR
     def calculate_form_factor(form_ppg, overall_ppg):
         if overall_ppg == 0:
             return 1.0
         form_ratio = form_ppg / overall_ppg
-        
+
         if form_ratio < 0.4:
             return 0.70
         elif form_ratio < 0.6:
@@ -3361,30 +3133,38 @@ def analyze_match_v52_enhanced(match: MatchData) -> Dict:
             return 1.10
         else:
             return 1.0
-    
+
     form_factor_h = calculate_form_factor(form_ppg_h, ppg[0])
     form_factor_a = calculate_form_factor(form_ppg_a, ppg[1])
-    
-    # v5.0: TKI-KRISE ÜBERSCHREIBT FORM-MALUS
-    if tki_a > 1.0 and form_factor_h < 1.0:
-        form_factor_h = 1.0
-    if tki_h > 1.0 and form_factor_a < 1.0:
-        form_factor_a = 1.0
-    
-    # v5.0: DEFENSIVE CONTEXT CHECK (Form-Boost reduzieren)
+
+    # 3. TKI BERECHNUNG (früh, für spätere Checks)
+    tki_h = max(0, s_c_ha[1] - xg_ha[1])
+    tki_a = max(0, s_c_ha[3] - xg_ha[3])
+    tki_combined = tki_h + tki_a
+
+    # 4. NEU v4.9: TKI-KRISE ÜBERSCHREIBT FORM-MALUS
+    if tki_a > 1.0:  # Gast-Keeper in Krise
+        if form_factor_h < 1.0:
+            form_factor_h = 1.0  # Ignoriere Heim-Form-Malus
+
+    if tki_h > 1.0:  # Heim-Keeper in Krise
+        if form_factor_a < 1.0:
+            form_factor_a = 1.0  # Ignoriere Gast-Form-Malus
+
+    # 5. NEU v4.9: DEFENSIVE CONTEXT CHECK (Form-Boost reduzieren)
     if cs_rates[0] > 40 and form_factor_h > 1.0:
-        form_factor_h = 1.0 + (form_factor_h - 1.0) * 0.5
+        form_factor_h = 1.0 + (form_factor_h - 1.0) * 0.5  # Halbiere den Boost
+
     if cs_rates[1] > 40 and form_factor_a > 1.0:
         form_factor_a = 1.0 + (form_factor_a - 1.0) * 0.5
-    
-    # Form-Faktor anwenden
+
+    # 6. Form-Faktor anwenden
     mu_h *= form_factor_h
     mu_a *= form_factor_a
-    
-    
-    # ===== 8. v5.0 DOMINANZ-DÄMPFER (aggressiv) =====
+
+    # 7. DOMINANZ-DÄMPFER (aggressiv)
     ppg_diff = ppg[0] - ppg[1]
-    
+
     if ppg_diff > 1.5:
         mu_a *= 0.45
         mu_h *= 1.30
@@ -3394,131 +3174,122 @@ def analyze_match_v52_enhanced(match: MatchData) -> Dict:
     elif ppg_diff > 0.8:
         mu_a *= 0.65
         mu_h *= 1.15
-    
-    
-    # ===== 9. v5.0 AUSWÄRTS-UNDERDOG BOOST =====
+
+    # 8. AUSWÄRTS-UNDERDOG BOOST
     if ppg_diff < -0.5:
         mu_a *= 1.20
         mu_h *= 0.80
     elif ppg_diff < -0.3:
         mu_a *= 1.10
         mu_h *= 0.90
-    
-    
-    # ===== 10. v5.0 CLEAN SHEET VALIDIERUNG (verschärft) =====
+
+    # 9. CLEAN SHEET VALIDIERUNG (verschärft)
     if cs_rates[0] > 50:
         mu_a *= 0.70
     elif cs_rates[0] > 40:
         mu_a *= 0.80
     elif cs_rates[0] > 30:
         mu_a *= 0.85
-    
+
     if cs_rates[1] > 50:
         mu_h *= 0.70
     elif cs_rates[1] > 40:
         mu_h *= 0.80
     elif cs_rates[1] > 30:
         mu_h *= 0.85
-    
-    
-    # ===== 11. v5.2 VORSICHTIGER TKI-BOOST (25% statt 40%) =====
-    mu_h = apply_tki_boost_conservative(mu_h, tki_a)
-    mu_a = apply_tki_boost_conservative(mu_a, tki_h)
-    
-    
-    # ===== 12. v5.0 CONVERSION-RATE ADJUSTMENT =====
+
+    # 10. TKI-BOOST
+    mu_h = mu_h * (1 + (tki_a * 0.4))
+    mu_a = mu_a * (1 + (tki_h * 0.4))
+
+    # 11. CONVERSION-RATE ADJUSTMENT
     def apply_conversion_adjustment(mu, conversion_rate):
         if conversion_rate > 14:
             return mu * 1.10
         elif conversion_rate < 8:
             return mu * 0.90
         return mu
-    
+
     mu_h = apply_conversion_adjustment(mu_h, conv_rate[0])
     mu_a = apply_conversion_adjustment(mu_a, conv_rate[1])
-    
-    
-    # ===== 13. ML-KORREKTUR (wenn verfügbar) =====
-    ml_info = {'applied': False, 'reason': 'ML-Modell nicht initialisiert'}
-    
-    if st.session_state.position_ml_model and st.session_state.position_ml_model.is_trained:
+
+    # ML-Korrektur (Phase 3) - NACH allen v4.9 Anpassungen
+    ml_info = {"applied": False, "reason": "ML-Modell nicht initialisiert"}
+
+    if (
+        st.session_state.position_ml_model
+        and st.session_state.position_ml_model.is_trained
+    ):
         ml_correction = st.session_state.position_ml_model.predict_correction(
-            home_team=match.home_team,
-            away_team=match.away_team,
-            match_date=match.date
+            home_team=match.home_team, away_team=match.away_team, match_date=match.date
         )
 
-        if ml_correction['is_trained'] and ml_correction['confidence'] > 0.3:
+        if ml_correction["is_trained"] and ml_correction["confidence"] > 0.3:
             mu_h_original = mu_h
             mu_a_original = mu_a
 
-            mu_h *= ml_correction['home_correction']
-            mu_a *= ml_correction['away_correction']
+            mu_h *= ml_correction["home_correction"]
+            mu_a *= ml_correction["away_correction"]
 
             ml_info = {
-                'applied': True,
-                'home_correction': ml_correction['home_correction'],
-                'away_correction': ml_correction['away_correction'],
-                'confidence': ml_correction['confidence'],
-                'original_mu': {'home': mu_h_original, 'away': mu_a_original},
-                'corrected_mu': {'home': mu_h, 'away': mu_a},
-                'message': ml_correction['message']
+                "applied": True,
+                "home_correction": ml_correction["home_correction"],
+                "away_correction": ml_correction["away_correction"],
+                "confidence": ml_correction["confidence"],
+                "original_mu": {"home": mu_h_original, "away": mu_a_original},
+                "corrected_mu": {"home": mu_h, "away": mu_a},
+                "message": ml_correction["message"],
             }
         else:
             ml_info = {
-                'applied': False,
-                'reason': ml_correction['message'],
-                'confidence': ml_correction['confidence']
+                "applied": False,
+                "reason": ml_correction["message"],
+                "confidence": ml_correction["confidence"],
             }
-    
-    
-    # ===== 14. POISSON-BERECHNUNG =====
+
+    # 12. POISSON MATRIX
     wh, dr, wa, ov25, btts_p = 0.0, 0.0, 0.0, 0.0, 0.0
     max_p, score = 0.0, (0, 0)
 
     for i in range(9):
         for j in range(9):
             p = poisson_probability(mu_h, i) * poisson_probability(mu_a, j)
-            if i > j: 
+            if i > j:
                 wh += p
-            elif i == j: 
+            elif i == j:
                 dr += p
-            else: 
+            else:
                 wa += p
-            if (i + j) > 2.5: 
+            if (i + j) > 2.5:
                 ov25 += p
-            if i > 0 and j > 0: 
+            if i > 0 and j > 0:
                 btts_p += p
-            if p > max_p: 
+            if p > max_p:
                 max_p, score = p, (i, j)
-    
-    
-    # ===== 15. v5.0 BTTS-PRÄZISIONS-FILTER =====
+
+    # 13. BTTS-PRÄZISIONS-FILTER v4.9
     if mu_h < 1.0 or mu_a < 1.0:
         btts_p *= 0.8
-    
-    # v5.0: DOMINANZ-KILLER (nur wenn KEINE TKI-Krise!)
-    if tki_combined < 0.8:
+
+    # NEU v4.9: DOMINANZ-KILLER (nur wenn KEINE TKI-Krise!)
+    if tki_combined < 0.8:  # Nur bei stabilen Defensiven
         if ppg_diff > 1.0:
             btts_p *= 0.60
         elif ppg_diff > 0.8:
             btts_p *= 0.75
-    
-    # v5.0: FAILED TO SCORE CHECK (nur bei starker Dominanz)
-    if fts_a > 0.30 and ppg_diff > 1.0:
+
+    # NEU v4.9: FAILED TO SCORE CHECK (nur bei starker Dominanz)
+    if fts_a > 0.30 and ppg_diff > 1.0:  # GEÄNDERT von 0.5 auf 1.0
         btts_p *= 0.70
-    if fts_h > 0.30 and ppg_diff < -1.0:
+    if fts_h > 0.30 and ppg_diff < -1.0:  # GEÄNDERT von -0.5 auf -1.0
         btts_p *= 0.70
-    
-    
-    # ===== 16. RISIKO-ANALYSE =====
+
     h2h_stats = analyze_h2h(match.home_team, match.away_team, match.h2h_results)
 
     risk_score = calculate_risk_score(
-        mu_h, mu_a, tki_h, tki_a, ppg_diff,
-        h2h_stats['avg_total_goals'], btts_p * 100
+        mu_h, mu_a, tki_h, tki_a, ppg_diff, h2h_stats["avg_total_goals"], btts_p * 100
     )
-    
+
     extended_risk = calculate_extended_risk_scores_strict(
         prob_1x2_home=wh * 100,
         prob_1x2_draw=dr * 100,
@@ -3534,89 +3305,75 @@ def analyze_match_v52_enhanced(match: MatchData) -> Dict:
         tki_combined=tki_h + tki_a,
         ppg_diff=ppg_diff,
         home_team=match.home_team,
-        away_team=match.away_team
+        away_team=match.away_team,
     )
-    
-    
-    # ===== 17. ZUSAMMENFASSUNG =====
+
     result = {
-        'version': 'v5.2 xG+ Enhanced',
-        'match_info': {
-            'home': match.home_team.name,
-            'away': match.away_team.name,
-            'date': match.date,
-            'competition': match.competition,
-            'kickoff': match.kickoff
+        "match_info": {
+            "home": match.home_team.name,
+            "away": match.away_team.name,
+            "date": match.date,
+            "competition": match.competition,
+            "kickoff": match.kickoff,
         },
-        'mu': {
-            'home': round(mu_h, 2),
-            'away': round(mu_a, 2),
-            'total': round(mu_h + mu_a, 2),
-            'ppg_diff': round(ppg_diff, 2)
+        "tki": {
+            "home": round(tki_h, 2),
+            "away": round(tki_a, 2),
+            "combined": round(tki_h + tki_a, 2),
         },
-        'tki': {
-            'home': round(tki_h, 2),
-            'away': round(tki_a, 2),
-            'combined': round(tki_h + tki_a, 2)
+        "mu": {
+            "home": round(mu_h, 2),
+            "away": round(mu_a, 2),
+            "total": round(mu_h + mu_a, 2),
+            "ppg_diff": round(ppg_diff, 2),
         },
-        'xg_analysis': {
-            'home_overperformance': round(home_xg_over, 2),
-            'away_overperformance': round(away_xg_over, 2),
-            'home_shot_quality': round(home_shot_quality, 2),
-            'away_shot_quality': round(away_shot_quality, 2),
-            'home_defensive_strength': round(home_defensive, 2),
-            'away_defensive_strength': round(away_defensive, 2)
+        "form": {
+            "home_factor": round(form_factor_h, 2),
+            "away_factor": round(form_factor_a, 2),
+            "home_ppg": round(form_ppg_h, 2),
+            "away_ppg": round(form_ppg_a, 2),
         },
-        'game_context': context,
-        'form': {
-            'home_factor': round(form_factor_h, 2),
-            'away_factor': round(form_factor_a, 2),
-            'home_ppg': round(form_ppg_h, 2),
-            'away_ppg': round(form_ppg_a, 2),
+        "h2h": h2h_stats,
+        "probabilities": {
+            "home_win": round(wh * 100, 1),
+            "draw": round(dr * 100, 1),
+            "away_win": round(wa * 100, 1),
+            "over_25": round(ov25 * 100, 1),
+            "under_25": round((1 - ov25) * 100, 1),
+            "btts_yes": round(btts_p * 100, 1),
+            "btts_no": round((1 - btts_p) * 100, 1),
         },
-        'h2h': h2h_stats,
-        'probabilities': {
-            'home_win': round(wh * 100, 1),
-            'draw': round(dr * 100, 1),
-            'away_win': round(wa * 100, 1),
-            'over_25': round(ov25 * 100, 1),
-            'under_25': round((1 - ov25) * 100, 1),
-            'btts_yes': round(btts_p * 100, 1),
-            'btts_no': round((1 - btts_p) * 100, 1)
+        "scorelines": [(f"{score[0]}:{score[1]}", round(max_p * 100, 2))],
+        "predicted_score": f"{score[0]}:{score[1]}",
+        "risk_score": risk_score,
+        "extended_risk": extended_risk,
+        "ml_position_correction": ml_info,
+        "odds": {
+            "1x2": match.odds_1x2,
+            "ou25": match.odds_ou25,
+            "btts": match.odds_btts,
         },
-        'scorelines': [(f"{score[0]}:{score[1]}", round(max_p * 100, 2))],
-        'predicted_score': f"{score[0]}:{score[1]}",
-        'risk_score': risk_score,
-        'extended_risk': extended_risk,
-        'ml_position_correction': ml_info,
-        'odds': {
-            '1x2': match.odds_1x2,
-            'ou25': match.odds_ou25,
-            'btts': match.odds_btts
-        }
     }
-    
-    
-    # ===== 18. TRACKING =====
+
     try:
         save_prediction_to_sheets(
-            match_info=result['match_info'],
-            probabilities=result['probabilities'],
-            odds=result['odds'],
-            risk_score=result['extended_risk']['overall'],
-            predicted_score=result['predicted_score'],
-            mu_info=result['mu']
+            match_info=result["match_info"],
+            probabilities=result["probabilities"],
+            odds=result["odds"],
+            risk_score=result["extended_risk"]["overall"],
+            predicted_score=result["predicted_score"],
+            mu_info=result["mu"],
         )
     except Exception:
         pass
-    
+
     return result
 
 
 def analyze_match_with_extended_data(
     match: MatchData, extended_data: Optional[ExtendedMatchData] = None
 ):
-    result = analyze_match_v52_enhanced(match)
+    result = analyze_match_v47_ml(match)
 
     if (
         extended_data
@@ -4155,7 +3912,7 @@ def display_results(result):
             elif alert["type"] == "success":
                 st.success(f"{alert['level']} **{alert['title']}**: {alert['message']}")
 
-    st.subheader("🧠 SMART-PRECISION v5.2 xG+")
+    st.subheader("🧠 SMART-PRECISION v4.7+")
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Smart μ Home", f"{result['mu']['home']:.2f}")
@@ -5384,10 +5141,9 @@ def show_sidebar():
 
         # ========== VERSION INFO ==========
         st.markdown("---")
-        st.caption("**Sportwetten-Prognose v5.2 xG+**")
-        st.caption("🎯 Intelligente xG-Gewichtung")
-        st.caption("📊 Regression zum Mittelwert")
+        st.caption("**Sportwetten-Prognose v4.7+**")
         st.caption("⚡ ML-Korrekturen aktiviert")
+        st.caption("🎯 Strenges Risiko-Scoring 1-5")
         st.caption("💰 Bankroll-Management")
 
 
@@ -5706,12 +5462,12 @@ def add_historical_match_ui():
 
 
 def main():
-    st.title("⚽ SPORTWETTEN-PROGNOSEMODELL v5.2 xG+ Enhanced")
+    st.title("⚽ SPORTWETTEN-PROGNOSEMODELL v4.7+")
     st.markdown(
-        "### SMART-PRECISION mit **xG-INTELLIGENZ + SPIEL-KONTEXT ANALYSE**"
+        "### EXAKTE v4.7 SMART-PRECISION LOGIK mit **ERWEITERTEM RISIKO-SCORING (1-5)**"
     )
     st.markdown(
-        "**v5.2 Features:** Intelligente xG-Gewichtung • Regression zum Mittelwert • Shot Quality • Game Context • ML-Korrekturen"
+        "**Neu:** Gesamt-Risiko 1-5 + individuelle Wetten-Risikos + Bankroll-Management + ML-Korrekturen"
     )
     st.markdown("---")
 
@@ -5992,7 +5748,7 @@ def main():
                                             }
                                         )
                                     else:
-                                        result = analyze_match_v52_enhanced(match)
+                                        result = analyze_match_v47_ml(match)
                                         all_results.append(
                                             {"sheet_name": sheet_name, "result": result}
                                         )
@@ -6173,7 +5929,7 @@ def main():
                                         )
 
                                     else:
-                                        result = analyze_match_v52_enhanced(match)
+                                        result = analyze_match_v47_ml(match)
                                         # NEU: Speichere auch das Ergebnis
                                         st.session_state.current_result = result
 
