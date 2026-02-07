@@ -6115,7 +6115,13 @@ def main():
             st.subheader("🎮 Demo-Wetten Simulation")
             st.info("💡 Wähle deine Wetten aus. Die Seite lädt erst neu wenn du auf 'Wetten bestätigen' klickst!")
             
+            # DEBUG: Zeige was in demo_bet_options ist
+            st.write(f"🔵 DEBUG: {len(st.session_state.demo_bet_options)} Wettoptionen gefunden")
+            for opt in st.session_state.demo_bet_options:
+                st.write(f"🔵 DEBUG: - {opt['market']}: +€{opt['potential_win']:.2f} / -€{opt['potential_loss']:.2f}")
+            
             with st.form("demo_bets_form"):
+                st.write("🔵 DEBUG: INSIDE Form - Zeige Checkboxen")
                 import pandas as pd
                 
                 # Zeige alle Wettoptionen
