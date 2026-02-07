@@ -478,18 +478,26 @@ def display_stake_recommendation(
                 key=win_key,
             ):
                 old_bankroll = st.session_state.risk_management["bankroll"]
+                st.write(f"🔴 DEBUG GEWINN: Alte Bankroll = €{old_bankroll:.2f}")
+                
                 add_to_stake_history(
                     match_info=match_info,
                     stake=stake_info["recommended_stake"],
                     profit=stake_info["potential_win"],
                     market=market_name,
                 )
+                
                 new_bankroll = st.session_state.risk_management["bankroll"]
+                st.write(f"🔴 DEBUG GEWINN: Neue Bankroll = €{new_bankroll:.2f}")
+                st.write(f"🔴 DEBUG GEWINN: History Länge = {len(st.session_state.risk_management['stake_history'])}")
+                
                 # Füge zur pending list hinzu
                 st.session_state.pending_demo_actions.append({
                     "type": "success",
                     "message": f"✅ {market_name}: +€{stake_info['potential_win']:.2f} (€{old_bankroll:.2f} → €{new_bankroll:.2f})"
                 })
+                st.write(f"🔴 DEBUG GEWINN: Pending actions = {len(st.session_state.pending_demo_actions)}")
+                
                 if "sidebar_bankroll_input" in st.session_state:
                     del st.session_state["sidebar_bankroll_input"]
         
@@ -5991,7 +5999,9 @@ def main():
                                                 
                                                 # Zeige aktuelle Bankroll Info
                                                 current_bankroll = st.session_state.risk_management["bankroll"]
-                                                st.info(f"💰 Aktuelle Bankroll (noch nicht in Sidebar sichtbar): €{current_bankroll:,.2f}")
+                                                num_actions = len(st.session_state.pending_demo_actions)
+                                                history_len = len(st.session_state.risk_management.get("stake_history", []))
+                                                st.info(f"💰 Aktuelle Bankroll: €{current_bankroll:,.2f} | {num_actions} Wette(n) | Historie: {history_len} Einträge")
                                                 
                                                 # Aktualisieren Button
                                                 col1, col2 = st.columns([2, 1])
