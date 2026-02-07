@@ -459,78 +459,30 @@ def display_stake_recommendation(
             delta=f"Quote: {odds:.2f}",
         )
 
-    # DEMO: Simulierte Wette-Auswahl
+    # DEMO: Speichere Wettoptionen für spätere Auswahl
     demo_mode_active = st.session_state.get("enable_demo_mode", False)
     
     if demo_mode_active and match_info:
+        # Initialisiere demo_bet_options wenn nicht vorhanden
+        if "demo_bet_options" not in st.session_state:
+            st.session_state.demo_bet_options = []
         
-        # Initialisiere demo_selections wenn nicht vorhanden
-        if "demo_selections" not in st.session_state:
-            st.session_state.demo_selections = {}
+        # Füge diese Wettoption zur Liste hinzu
+        bet_option = {
+            "market": market_name,
+            "match_info": match_info,
+            "potential_win": stake_info["potential_win"],
+            "potential_loss": stake_info["potential_loss"],
+            "stake": stake_info["recommended_stake"],
+            "unique_id": f"{market_name}_{hash(match_info)}",
+        }
         
-        # Unique key für diese spezifische Wette
-        market_key = f"{market_name}_{hash(match_info)}"
+        # Prüfe ob diese Option nicht schon existiert
+        if not any(opt["unique_id"] == bet_option["unique_id"] for opt in st.session_state.demo_bet_options):
+            st.session_state.demo_bet_options.append(bet_option)
         
-        # Prüfe ob diese Wette bereits ausgewählt ist
-        existing_selection = st.session_state.demo_selections.get(market_key)
-        
-        col_sim1, col_sim2, col_sim3 = st.columns([2, 2, 1])
-        
-        with col_sim1:
-            # Zeige Status
-            if existing_selection and existing_selection["type"] == "win":
-                button_label = f"✅ GEWINN ausgewählt"
-                button_type = "primary"
-            else:
-                button_label = f"◯ GEWINN wählen (+€{stake_info['potential_win']:.2f})"
-                button_type = "secondary"
-            
-            if st.button(button_label, key=f"win_{market_key}", use_container_width=True, type=button_type):
-                # Toggle: Wenn schon Gewinn ausgewählt, deselect, sonst select
-                if existing_selection and existing_selection["type"] == "win":
-                    del st.session_state.demo_selections[market_key]
-                else:
-                    st.session_state.demo_selections[market_key] = {
-                        "market": market_name,
-                        "match_info": match_info,
-                        "type": "win",
-                        "profit": stake_info["potential_win"],
-                        "stake": stake_info["recommended_stake"],
-                    }
-                st.rerun()
-        
-        with col_sim2:
-            # Zeige Status
-            if existing_selection and existing_selection["type"] == "loss":
-                button_label = f"❌ VERLUST ausgewählt"
-                button_type = "primary"
-            else:
-                button_label = f"◯ VERLUST wählen (-€{stake_info['potential_loss']:.2f})"
-                button_type = "secondary"
-            
-            if st.button(button_label, key=f"loss_{market_key}", use_container_width=True, type=button_type):
-                # Toggle: Wenn schon Verlust ausgewählt, deselect, sonst select
-                if existing_selection and existing_selection["type"] == "loss":
-                    del st.session_state.demo_selections[market_key]
-                else:
-                    st.session_state.demo_selections[market_key] = {
-                        "market": market_name,
-                        "match_info": match_info,
-                        "type": "loss",
-                        "profit": -stake_info["potential_loss"],
-                        "stake": stake_info["recommended_stake"],
-                    }
-                st.rerun()
-        
-        with col_sim3:
-            # Zeige aktuellen Status
-            if existing_selection:
-                if existing_selection["type"] == "win":
-                    st.success("✓")
-                else:
-                    st.error("✓")
-            else:
-                st.write("")
+        # Zeige Info dass Demo-Modus aktiv ist
+        st.caption("🎮 Demo-Modus: Wettauswahl am Ende der Analyse")
 
     with st.expander("📊 Detaillierte Einsatz-Analyse", expanded=False):
         col_a, col_b, col_c = st.columns(3)
@@ -5982,54 +5934,104 @@ def main():
                                         st.markdown("---")
                                         display_results(result)
                                         
-                                        # Zeige Demo-Wetten Zusammenfassung und Bestätigen-Button
+                                        # Zeige zentrale Demo-Wettauswahl
                                         if st.session_state.get("enable_demo_mode", False):
-                                            if st.session_state.get("demo_selections", {}):
+                                            if st.session_state.get("demo_bet_options", []):
                                                 st.markdown("---")
-                                                st.subheader("🎮 Ausgewählte Wetten")
+                                                st.subheader("🎮 Demo-Wetten für dieses Match")
+                                                st.info("Wähle die Wetten aus, die du simulieren möchtest. Buttons togglen bei jedem Klick.")
                                                 
-                                                # Berechne Gesamteffekt
-                                                total_profit = 0
-                                                for selection in st.session_state.demo_selections.values():
-                                                    total_profit += selection["profit"]
-                                                    if selection["type"] == "win":
-                                                        st.success(f"✅ {selection['market']}: +€{selection['profit']:.2f}")
-                                                    else:
-                                                        st.error(f"❌ {selection['market']}: €{selection['profit']:.2f}")
+                                                # Initialisiere demo_selections
+                                                if "demo_selections" not in st.session_state:
+                                                    st.session_state.demo_selections = {}
                                                 
-                                                # Zeige voraussichtliche neue Bankroll
-                                                current_bankroll = st.session_state.risk_management["bankroll"]
-                                                new_bankroll = current_bankroll + total_profit
-                                                st.info(f"💰 Bankroll: €{current_bankroll:,.2f} → €{new_bankroll:,.2f} (Änderung: {total_profit:+.2f}€)")
+                                                # Zeige alle verfügbaren Wettoptionen
+                                                for option in st.session_state.demo_bet_options:
+                                                    st.markdown(f"**{option['market']}**")
+                                                    
+                                                    col1, col2, col3 = st.columns([5, 5, 2])
+                                                    
+                                                    unique_id = option["unique_id"]
+                                                    current_selection = st.session_state.demo_selections.get(unique_id, {})
+                                                    
+                                                    with col1:
+                                                        if st.button(
+                                                            f"{'✅' if current_selection.get('type') == 'win' else '◯'} GEWINN (+€{option['potential_win']:.2f})",
+                                                            key=f"final_win_{unique_id}",
+                                                            use_container_width=True,
+                                                            type="primary" if current_selection.get('type') == 'win' else "secondary"
+                                                        ):
+                                                            if current_selection.get('type') == 'win':
+                                                                del st.session_state.demo_selections[unique_id]
+                                                            else:
+                                                                st.session_state.demo_selections[unique_id] = {
+                                                                    "market": option["market"],
+                                                                    "match_info": option["match_info"],
+                                                                    "type": "win",
+                                                                    "profit": option["potential_win"],
+                                                                    "stake": option["stake"],
+                                                                }
+                                                    
+                                                    with col2:
+                                                        if st.button(
+                                                            f"{'❌' if current_selection.get('type') == 'loss' else '◯'} VERLUST (-€{option['potential_loss']:.2f})",
+                                                            key=f"final_loss_{unique_id}",
+                                                            use_container_width=True,
+                                                            type="primary" if current_selection.get('type') == 'loss' else "secondary"
+                                                        ):
+                                                            if current_selection.get('type') == 'loss':
+                                                                del st.session_state.demo_selections[unique_id]
+                                                            else:
+                                                                st.session_state.demo_selections[unique_id] = {
+                                                                    "market": option["market"],
+                                                                    "match_info": option["match_info"],
+                                                                    "type": "loss",
+                                                                    "profit": -option["potential_loss"],
+                                                                    "stake": option["stake"],
+                                                                }
+                                                    
+                                                    with col3:
+                                                        if current_selection:
+                                                            st.success("✓" if current_selection.get('type') == 'win' else "✗")
                                                 
-                                                # Bestätigen Button
-                                                col1, col2 = st.columns([2, 1])
-                                                with col1:
-                                                    if st.button("✅ Wetten bestätigen & Bankroll aktualisieren", use_container_width=True, type="primary"):
-                                                        # Verarbeite alle Auswahlen
-                                                        for selection in st.session_state.demo_selections.values():
-                                                            add_to_stake_history(
-                                                                match_info=selection["match_info"],
-                                                                stake=selection["stake"],
-                                                                profit=selection["profit"],
-                                                                market=selection["market"],
-                                                            )
-                                                        # Lösche Auswahlen und unchecke alle Checkboxen
-                                                        for key in list(st.session_state.keys()):
-                                                            if key.startswith("demo_win_") or key.startswith("demo_loss_"):
-                                                                del st.session_state[key]
-                                                        st.session_state.demo_selections = {}
-                                                        if "sidebar_bankroll_input" in st.session_state:
-                                                            del st.session_state["sidebar_bankroll_input"]
-                                                        st.rerun()
-                                                with col2:
-                                                    if st.button("❌ Auswahl löschen", use_container_width=True):
-                                                        # Lösche alle Auswahlen und unchecke Checkboxen
-                                                        for key in list(st.session_state.keys()):
-                                                            if key.startswith("demo_win_") or key.startswith("demo_loss_"):
-                                                                del st.session_state[key]
-                                                        st.session_state.demo_selections = {}
-                                                        st.rerun()
+                                                # Zeige Zusammenfassung wenn Auswahlen existieren
+                                                if st.session_state.demo_selections:
+                                                    st.markdown("---")
+                                                    st.markdown("**Ausgewählte Wetten:**")
+                                                    
+                                                    total_profit = 0
+                                                    for selection in st.session_state.demo_selections.values():
+                                                        total_profit += selection["profit"]
+                                                        if selection["type"] == "win":
+                                                            st.success(f"✅ {selection['market']}: +€{selection['profit']:.2f}")
+                                                        else:
+                                                            st.error(f"❌ {selection['market']}: {selection['profit']:.2f}€")
+                                                    
+                                                    current_bankroll = st.session_state.risk_management["bankroll"]
+                                                    new_bankroll = current_bankroll + total_profit
+                                                    st.info(f"💰 Bankroll: €{current_bankroll:,.2f} → €{new_bankroll:,.2f} (Änderung: {total_profit:+.2f}€)")
+                                                    
+                                                    col_a, col_b = st.columns([3, 2])
+                                                    with col_a:
+                                                        if st.button("✅ Wetten bestätigen & Bankroll aktualisieren", use_container_width=True, type="primary", key="confirm_bets"):
+                                                            for selection in st.session_state.demo_selections.values():
+                                                                add_to_stake_history(
+                                                                    match_info=selection["match_info"],
+                                                                    stake=selection["stake"],
+                                                                    profit=selection["profit"],
+                                                                    market=selection["market"],
+                                                                )
+                                                            st.session_state.demo_selections = {}
+                                                            st.session_state.demo_bet_options = []
+                                                            if "sidebar_bankroll_input" in st.session_state:
+                                                                del st.session_state["sidebar_bankroll_input"]
+                                                            st.success("✅ Wetten wurden zur Bankroll hinzugefügt!")
+                                                            st.rerun()
+                                                    
+                                                    with col_b:
+                                                        if st.button("🗑️ Alle Auswahlen löschen", use_container_width=True, key="clear_selections"):
+                                                            st.session_state.demo_selections = {}
+                                                            st.rerun()
 
 
                                 except Exception as e:
