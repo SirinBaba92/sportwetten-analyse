@@ -6144,6 +6144,10 @@ def main():
                 # Submit Button
                 submitted = st.form_submit_button("✅ Wetten bestätigen & Bankroll aktualisieren", use_container_width=True, type="primary")
             
+            # DEBUG: Zeige ob submitted True ist
+            st.write(f"🟡 DEBUG: submitted = {submitted}")
+            st.write(f"🟡 DEBUG: Form wurde {'SUBMITTED' if submitted else 'NICHT submitted'}")
+            
             # NACH dem Form: Verarbeite die Auswahl
             if submitted:
                 st.write("🔴 DEBUG: Submit wurde geklickt!")
