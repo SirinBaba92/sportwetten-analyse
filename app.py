@@ -3511,12 +3511,7 @@ def analyze_match_v52_enhanced(match: MatchData) -> Dict:
         btts_p *= 0.70
     
     
-    # ===== 16. KONSISTENTE SCORE-VORHERSAGE =====
-    consistent_score = get_consistent_predicted_score(wh, dr, wa, ov25, btts_p, mu_h, mu_a)
-    score = consistent_score
-    
-    
-    # ===== 17. RISIKO-ANALYSE =====
+    # ===== 16. RISIKO-ANALYSE =====
     h2h_stats = analyze_h2h(match.home_team, match.away_team, match.h2h_results)
 
     risk_score = calculate_risk_score(
@@ -3543,7 +3538,7 @@ def analyze_match_v52_enhanced(match: MatchData) -> Dict:
     )
     
     
-    # ===== 18. ZUSAMMENFASSUNG =====
+    # ===== 17. ZUSAMMENFASSUNG =====
     result = {
         'version': 'v5.2 xG+ Enhanced',
         'match_info': {
@@ -3602,7 +3597,7 @@ def analyze_match_v52_enhanced(match: MatchData) -> Dict:
     }
     
     
-    # ===== 19. TRACKING =====
+    # ===== 18. TRACKING =====
     try:
         save_prediction_to_sheets(
             match_info=result['match_info'],
