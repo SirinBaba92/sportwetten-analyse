@@ -5515,10 +5515,6 @@ def main():
         ["📊 Match-Analyse", "🧠 ML-Training", "📚 Trainingsdaten", "📈 Statistiken"]
     )
     with tab1:
-        # Reset demo_bet_options bei jedem Laden von Tab1
-        if st.session_state.get("enable_demo_mode", False):
-            st.session_state.demo_bet_options = []
-        
         # ---- Monat-State initialisieren (Start = aktueller Monat) ----
         today = date.today()
         if "current_month" not in st.session_state:
@@ -5859,6 +5855,9 @@ def main():
                         use_container_width=True,
                         key=f"analyze_single_{selected_worksheet}",
                     ):
+                        # Reset demo_bet_options für neue Analyse
+                        st.session_state.demo_bet_options = []
+                        
                         with st.spinner(f"⚙️ Analysiere {selected_worksheet}..."):
                             match_data = read_worksheet_data(
                                 sheet_url, selected_worksheet
