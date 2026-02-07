@@ -464,35 +464,42 @@ def display_stake_recommendation(
     
     if demo_mode_active and match_info:
         
-        # Verwende Checkboxen statt Buttons - diese behalten ihren State
-        col_sim1, col_sim2 = st.columns(2)
+        # Initialisiere demo_selections wenn nicht vorhanden
+        if "demo_selections" not in st.session_state:
+            st.session_state.demo_selections = {}
         
         # Unique keys für diese spezifische Wette
-        win_checkbox_key = f"demo_win_{market_name}_{hash(match_info)}"
-        loss_checkbox_key = f"demo_loss_{market_name}_{hash(match_info)}"
+        market_key = f"{market_name}_{hash(match_info)}"
+        
+        # Prüfe ob diese Wette bereits ausgewählt ist
+        existing_selection = st.session_state.demo_selections.get(market_key, {})
+        win_is_selected = existing_selection.get("type") == "win"
+        loss_is_selected = existing_selection.get("type") == "loss"
+        
+        col_sim1, col_sim2 = st.columns(2)
         
         with col_sim1:
             win_checked = st.checkbox(
                 f"✅ {market_name} GEWINN (+€{stake_info['potential_win']:.2f})",
-                key=win_checkbox_key,
+                value=win_is_selected,
+                key=f"demo_win_{market_key}",
             )
         
         with col_sim2:
             loss_checked = st.checkbox(
                 f"❌ {market_name} VERLUST (-€{stake_info['potential_loss']:.2f})",
-                key=loss_checkbox_key,
+                value=loss_is_selected,
+                key=f"demo_loss_{market_key}",
             )
         
         # Verhindere dass beide gleichzeitig ausgewählt sind
         if win_checked and loss_checked:
             st.warning(f"⚠️ Bitte wähle nur GEWINN oder VERLUST für {market_name}, nicht beides!")
-        
-        # Speichere die Auswahl im Session State für später
-        if "demo_selections" not in st.session_state:
-            st.session_state.demo_selections = {}
-        
-        market_key = f"{market_name}_{hash(match_info)}"
-        if win_checked and not loss_checked:
+            # Entferne die Auswahl
+            if market_key in st.session_state.demo_selections:
+                del st.session_state.demo_selections[market_key]
+        elif win_checked:
+            # Speichere Gewinn-Auswahl
             st.session_state.demo_selections[market_key] = {
                 "market": market_name,
                 "match_info": match_info,
@@ -500,7 +507,8 @@ def display_stake_recommendation(
                 "profit": stake_info["potential_win"],
                 "stake": stake_info["recommended_stake"],
             }
-        elif loss_checked and not win_checked:
+        elif loss_checked:
+            # Speichere Verlust-Auswahl
             st.session_state.demo_selections[market_key] = {
                 "market": market_name,
                 "match_info": match_info,
@@ -508,7 +516,7 @@ def display_stake_recommendation(
                 "profit": -stake_info["potential_loss"],
                 "stake": stake_info["recommended_stake"],
             }
-        elif not win_checked and not loss_checked:
+        else:
             # Beide unchecked - entferne aus selections
             if market_key in st.session_state.demo_selections:
                 del st.session_state.demo_selections[market_key]
