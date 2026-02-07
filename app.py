@@ -6118,65 +6118,85 @@ def main():
             with st.form("demo_bets_form"):
                 import pandas as pd
                 
-                # Sammle alle Auswahlen
-                selections = {}
-                
+                # Zeige alle Wettoptionen
                 for option in st.session_state.demo_bet_options:
                     st.markdown(f"**{option['market']}**")
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        win_check = st.checkbox(
+                        st.checkbox(
                             f"✅ GEWINN (+€{option['potential_win']:.2f})",
                             key=f"form_win_{option['unique_id']}"
                         )
                     
                     with col2:
-                        loss_check = st.checkbox(
+                        st.checkbox(
                             f"❌ VERLUST (-€{option['potential_loss']:.2f})",
                             key=f"form_loss_{option['unique_id']}"
                         )
+                
+                # Submit Button
+                submitted = st.form_submit_button("✅ Wetten bestätigen & Bankroll aktualisieren", use_container_width=True, type="primary")
+            
+            # NACH dem Form: Verarbeite die Auswahl
+            if submitted:
+                # Jetzt lesen wir die Checkbox-States aus st.session_state
+                selections = []
+                
+                for option in st.session_state.demo_bet_options:
+                    win_key = f"form_win_{option['unique_id']}"
+                    loss_key = f"form_loss_{option['unique_id']}"
                     
-                    if win_check and not loss_check:
-                        selections[option['unique_id']] = {
+                    win_checked = st.session_state.get(win_key, False)
+                    loss_checked = st.session_state.get(loss_key, False)
+                    
+                    if win_checked and loss_checked:
+                        st.warning(f"⚠️ {option['market']}: Beide ausgewählt - wird übersprungen!")
+                    elif win_checked:
+                        selections.append({
                             "market": option["market"],
                             "type": "win",
                             "profit": option["potential_win"],
                             "match_info": option["match_info"],
                             "stake": option["stake"],
-                        }
-                    elif loss_check and not win_check:
-                        selections[option['unique_id']] = {
+                        })
+                    elif loss_checked:
+                        selections.append({
                             "market": option["market"],
                             "type": "loss",
                             "profit": -option["potential_loss"],
                             "match_info": option["match_info"],
                             "stake": option["stake"],
-                        }
+                        })
                 
-                # Submit Button
-                submitted = st.form_submit_button("✅ Wetten bestätigen & Bankroll aktualisieren", use_container_width=True, type="primary")
-                
-                if submitted:
-                    if selections:
-                        # Verarbeite alle Wetten
-                        for sel in selections.values():
-                            add_to_stake_history(
-                                match_info=sel["match_info"],
-                                stake=sel["stake"],
-                                profit=sel["profit"],
-                                market=sel["market"],
-                            )
-                        
-                        # Reset
-                        st.session_state.demo_bet_options = []
-                        if "sidebar_bankroll_input" in st.session_state:
-                            del st.session_state["sidebar_bankroll_input"]
-                        
-                        st.success(f"✅ {len(selections)} Wette(n) zur Bankroll hinzugefügt!")
-                        st.rerun()
-                    else:
-                        st.warning("⚠️ Keine Wetten ausgewählt!")
+                if selections:
+                    # Verarbeite alle Wetten
+                    for sel in selections:
+                        add_to_stake_history(
+                            match_info=sel["match_info"],
+                            stake=sel["stake"],
+                            profit=sel["profit"],
+                            market=sel["market"],
+                        )
+                    
+                    # Reset
+                    st.session_state.demo_bet_options = []
+                    # Lösche alle Form-Keys
+                    for option in st.session_state.demo_bet_options:
+                        win_key = f"form_win_{option['unique_id']}"
+                        loss_key = f"form_loss_{option['unique_id']}"
+                        if win_key in st.session_state:
+                            del st.session_state[win_key]
+                        if loss_key in st.session_state:
+                            del st.session_state[loss_key]
+                    
+                    if "sidebar_bankroll_input" in st.session_state:
+                        del st.session_state["sidebar_bankroll_input"]
+                    
+                    st.success(f"✅ {len(selections)} Wette(n) zur Bankroll hinzugefügt!")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Keine Wetten ausgewählt!")
 
     with tab2:
         show_ml_training_ui()
