@@ -459,7 +459,7 @@ def display_stake_recommendation(
             delta=f"Quote: {odds:.2f}",
         )
 
-    # DEMO: Simulierte Wette-Buttons
+    # DEMO: Simulierte Wette-Auswahl
     demo_mode_active = st.session_state.get("enable_demo_mode", False)
     
     if demo_mode_active and match_info:
@@ -468,58 +468,69 @@ def display_stake_recommendation(
         if "demo_selections" not in st.session_state:
             st.session_state.demo_selections = {}
         
-        # Unique keys für diese spezifische Wette
+        # Unique key für diese spezifische Wette
         market_key = f"{market_name}_{hash(match_info)}"
         
         # Prüfe ob diese Wette bereits ausgewählt ist
-        existing_selection = st.session_state.demo_selections.get(market_key, {})
-        win_is_selected = existing_selection.get("type") == "win"
-        loss_is_selected = existing_selection.get("type") == "loss"
+        existing_selection = st.session_state.demo_selections.get(market_key)
         
-        col_sim1, col_sim2 = st.columns(2)
+        col_sim1, col_sim2, col_sim3 = st.columns([2, 2, 1])
         
         with col_sim1:
-            win_checked = st.checkbox(
-                f"✅ {market_name} GEWINN (+€{stake_info['potential_win']:.2f})",
-                value=win_is_selected,
-                key=f"demo_win_{market_key}",
-            )
+            # Zeige Status
+            if existing_selection and existing_selection["type"] == "win":
+                button_label = f"✅ GEWINN ausgewählt"
+                button_type = "primary"
+            else:
+                button_label = f"◯ GEWINN wählen (+€{stake_info['potential_win']:.2f})"
+                button_type = "secondary"
+            
+            if st.button(button_label, key=f"win_{market_key}", use_container_width=True, type=button_type):
+                # Toggle: Wenn schon Gewinn ausgewählt, deselect, sonst select
+                if existing_selection and existing_selection["type"] == "win":
+                    del st.session_state.demo_selections[market_key]
+                else:
+                    st.session_state.demo_selections[market_key] = {
+                        "market": market_name,
+                        "match_info": match_info,
+                        "type": "win",
+                        "profit": stake_info["potential_win"],
+                        "stake": stake_info["recommended_stake"],
+                    }
+                st.rerun()
         
         with col_sim2:
-            loss_checked = st.checkbox(
-                f"❌ {market_name} VERLUST (-€{stake_info['potential_loss']:.2f})",
-                value=loss_is_selected,
-                key=f"demo_loss_{market_key}",
-            )
+            # Zeige Status
+            if existing_selection and existing_selection["type"] == "loss":
+                button_label = f"❌ VERLUST ausgewählt"
+                button_type = "primary"
+            else:
+                button_label = f"◯ VERLUST wählen (-€{stake_info['potential_loss']:.2f})"
+                button_type = "secondary"
+            
+            if st.button(button_label, key=f"loss_{market_key}", use_container_width=True, type=button_type):
+                # Toggle: Wenn schon Verlust ausgewählt, deselect, sonst select
+                if existing_selection and existing_selection["type"] == "loss":
+                    del st.session_state.demo_selections[market_key]
+                else:
+                    st.session_state.demo_selections[market_key] = {
+                        "market": market_name,
+                        "match_info": match_info,
+                        "type": "loss",
+                        "profit": -stake_info["potential_loss"],
+                        "stake": stake_info["recommended_stake"],
+                    }
+                st.rerun()
         
-        # Verhindere dass beide gleichzeitig ausgewählt sind
-        if win_checked and loss_checked:
-            st.warning(f"⚠️ Bitte wähle nur GEWINN oder VERLUST für {market_name}, nicht beides!")
-            # Entferne die Auswahl
-            if market_key in st.session_state.demo_selections:
-                del st.session_state.demo_selections[market_key]
-        elif win_checked:
-            # Speichere Gewinn-Auswahl
-            st.session_state.demo_selections[market_key] = {
-                "market": market_name,
-                "match_info": match_info,
-                "type": "win",
-                "profit": stake_info["potential_win"],
-                "stake": stake_info["recommended_stake"],
-            }
-        elif loss_checked:
-            # Speichere Verlust-Auswahl
-            st.session_state.demo_selections[market_key] = {
-                "market": market_name,
-                "match_info": match_info,
-                "type": "loss",
-                "profit": -stake_info["potential_loss"],
-                "stake": stake_info["recommended_stake"],
-            }
-        else:
-            # Beide unchecked - entferne aus selections
-            if market_key in st.session_state.demo_selections:
-                del st.session_state.demo_selections[market_key]
+        with col_sim3:
+            # Zeige aktuellen Status
+            if existing_selection:
+                if existing_selection["type"] == "win":
+                    st.success("✓")
+                else:
+                    st.error("✓")
+            else:
+                st.write("")
 
     with st.expander("📊 Detaillierte Einsatz-Analyse", expanded=False):
         col_a, col_b, col_c = st.columns(3)
