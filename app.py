@@ -390,9 +390,6 @@ def add_to_stake_history(match_info: str, stake: float, profit: float, market: s
 
     # Aktualisiere Bankroll
     st.session_state.risk_management["bankroll"] += profit
-    
-    # DEBUG: Log die Änderung
-    print(f"DEBUG: Bankroll updated from {bankroll_before:.2f} to {st.session_state.risk_management['bankroll']:.2f} (profit: {profit:.2f})")
 
 
 def calculate_stake_recommendation(
@@ -465,14 +462,11 @@ def display_stake_recommendation(
     # DEMO: Simulierte Wette-Buttons
     demo_mode_active = st.session_state.get("enable_demo_mode", False)
     
-    # DEBUG: Zeige Status
-    if demo_mode_active:
-        if match_info:
-            st.info(f"🎮 Demo-Buttons aktiv für: {market_name}")
-        else:
-            st.warning(f"⚠️ Demo-Modus AN, aber match_info ist leer!")
-    
     if demo_mode_active and match_info:
+        
+        # Initialisiere pending_demo_actions wenn nicht vorhanden
+        if "pending_demo_actions" not in st.session_state:
+            st.session_state.pending_demo_actions = []
         
         # Callback-Funktionen für Buttons
         def on_win_click():
@@ -484,8 +478,11 @@ def display_stake_recommendation(
                 market=market_name,
             )
             new_bankroll = st.session_state.risk_management["bankroll"]
-            # Speichere Message für nächsten Render
-            st.session_state["last_demo_action"] = f"✅ +€{stake_info['potential_win']:.2f} Gewinn! {old_bankroll:.2f} → {new_bankroll:.2f}"
+            # Speichere Action in Liste (ohne Rerun)
+            st.session_state.pending_demo_actions.append({
+                "type": "success",
+                "message": f"✅ {market_name}: +€{stake_info['potential_win']:.2f} (€{old_bankroll:.2f} → €{new_bankroll:.2f})"
+            })
             if "sidebar_bankroll_input" in st.session_state:
                 del st.session_state["sidebar_bankroll_input"]
         
@@ -498,18 +495,13 @@ def display_stake_recommendation(
                 market=market_name,
             )
             new_bankroll = st.session_state.risk_management["bankroll"]
-            # Speichere Message für nächsten Render
-            st.session_state["last_demo_action"] = f"❌ -€{stake_info['potential_loss']:.2f} Verlust! {old_bankroll:.2f} → {new_bankroll:.2f}"
+            # Speichere Action in Liste (ohne Rerun)
+            st.session_state.pending_demo_actions.append({
+                "type": "error",
+                "message": f"❌ {market_name}: -€{stake_info['potential_loss']:.2f} (€{old_bankroll:.2f} → €{new_bankroll:.2f})"
+            })
             if "sidebar_bankroll_input" in st.session_state:
                 del st.session_state["sidebar_bankroll_input"]
-        
-        # Zeige letzte Aktion wenn vorhanden
-        if "last_demo_action" in st.session_state:
-            if "✅" in st.session_state["last_demo_action"]:
-                st.success(st.session_state["last_demo_action"])
-            else:
-                st.error(st.session_state["last_demo_action"])
-            del st.session_state["last_demo_action"]
         
         col_sim1, col_sim2 = st.columns(2)
         with col_sim1:
@@ -4798,9 +4790,6 @@ def show_sidebar():
         demo_mode_active = st.session_state.get("enable_demo_mode", False)
         current_bankroll = st.session_state.risk_management["bankroll"]
         
-        # DEBUG INFO
-        st.caption(f"🔍 Debug: Demo={demo_mode_active}, Bankroll=€{current_bankroll:.2f}, History={len(st.session_state.risk_management.get('stake_history', []))}")
-        
         if demo_mode_active:
             # Im Demo-Modus: Zeige als Metric (read-only)
             st.metric(
@@ -5980,6 +5969,44 @@ def main():
                                         st.success("✅ Analyse abgeschlossen!")
                                         st.markdown("---")
                                         display_results(result)
+                                        
+                                        # Zeige Demo-Wetten Zusammenfassung und Aktualisieren-Button
+                                        if st.session_state.get("enable_demo_mode", False):
+                                            if st.session_state.get("pending_demo_actions", []):
+                                                st.markdown("---")
+                                                st.subheader("🎮 Simulierte Wetten für dieses Match")
+                                                
+                                                # Zeige alle pending actions
+                                                for action in st.session_state.pending_demo_actions:
+                                                    if action["type"] == "success":
+                                                        st.success(action["message"])
+                                                    else:
+                                                        st.error(action["message"])
+                                                
+                                                # Zeige aktuelle Bankroll Info
+                                                current_bankroll = st.session_state.risk_management["bankroll"]
+                                                st.info(f"💰 Aktuelle Bankroll (noch nicht in Sidebar sichtbar): €{current_bankroll:,.2f}")
+                                                
+                                                # Aktualisieren Button
+                                                col1, col2 = st.columns([2, 1])
+                                                with col1:
+                                                    if st.button("🔄 Sidebar aktualisieren", use_container_width=True, type="primary"):
+                                                        st.session_state.pending_demo_actions = []
+                                                        st.rerun()
+                                                with col2:
+                                                    if st.button("❌ Verwerfen", use_container_width=True):
+                                                        # Rückgängig machen - entferne die letzten Aktionen
+                                                        num_actions = len(st.session_state.pending_demo_actions)
+                                                        # Entferne die entsprechenden Historie-Einträge
+                                                        st.session_state.risk_management["stake_history"] = st.session_state.risk_management["stake_history"][:-num_actions]
+                                                        # Berechne Bankroll neu
+                                                        st.session_state.risk_management["bankroll"] = 1000.0  # Reset oder berechne aus Historie
+                                                        if st.session_state.risk_management["stake_history"]:
+                                                            for entry in st.session_state.risk_management["stake_history"]:
+                                                                st.session_state.risk_management["bankroll"] += entry["profit"]
+                                                        st.session_state.pending_demo_actions = []
+                                                        st.rerun()
+
 
                                 except Exception as e:
                                     st.error(f"❌ Fehler bei der Analyse: {e}")
