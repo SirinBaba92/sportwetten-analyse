@@ -5288,7 +5288,7 @@ def add_historical_match_ui():
 
         match_date = st.date_input(
             "Spieldatum",
-            value=datetime.now(),
+            value=date.today(),  # Konsistent mit min/max_value
             min_value=date(2020, 1, 1),  # Erlaubt Navigation ab 2020
             max_value=date(2030, 12, 31),  # Bis 2030
             key="hist_date",
@@ -5517,6 +5517,7 @@ def main():
         # optional: Auswahl zurücksetzen
         st.session_state.pop("selected_day", None)
         st.session_state.pop("current_month", None)
+        st.session_state.pop("month_manually_changed", None)
         st.rerun()
 
     # ---- Auto-Vorwahl (nur wenn noch nichts gewählt ist) ----
@@ -5536,8 +5537,11 @@ def main():
                 past_or_today[-1] if past_or_today else sorted_days[0]
             )
 
-    # ---- Kalender auf ausgewählten Tag-Monat springen ----
-    if "selected_day" in st.session_state:
+    # ---- Kalender auf ausgewählten Tag-Monat springen (nur bei Erstauswahl) ----
+    if (
+        "selected_day" in st.session_state
+        and "month_manually_changed" not in st.session_state
+    ):
         sd = parse_date(st.session_state.selected_day)
         st.session_state.current_month = date(sd.year, sd.month, 1)
 
@@ -5560,6 +5564,7 @@ def main():
         col_prev, col_title, col_next = st.columns([1, 2, 1])
         with col_prev:
             if st.button("←", key="month_prev"):
+                st.session_state.month_manually_changed = True
                 m = st.session_state.current_month
                 st.session_state.current_month = (
                     date(m.year - 1, 12, 1)
@@ -5573,6 +5578,7 @@ def main():
 
         with col_next:
             if st.button("→", key="month_next"):
+                st.session_state.month_manually_changed = True
                 m = st.session_state.current_month
                 st.session_state.current_month = (
                     date(m.year + 1, 1, 1)
@@ -5608,6 +5614,7 @@ def main():
                 if prev_months and st.button(
                     "⬅️ Zum letzten Monat mit Daten", key="jump_prev_data"
                 ):
+                    st.session_state.month_manually_changed = True
                     y, mo = prev_months[-1]
                     st.session_state.current_month = date(y, mo, 1)
                     st.rerun()
@@ -5616,6 +5623,7 @@ def main():
                 if next_months and st.button(
                     "Zum nächsten Monat mit Daten ➡️", key="jump_next_data"
                 ):
+                    st.session_state.month_manually_changed = True
                     y, mo = next_months[0]
                     st.session_state.current_month = date(y, mo, 1)
                     st.rerun()
