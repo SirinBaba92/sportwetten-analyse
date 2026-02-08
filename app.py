@@ -6541,40 +6541,43 @@ def main():
                     "Ø Profit": f"€{avg_profit_market:+.2f}"
                 })
             
-            df_markets = pd.DataFrame(market_data)
-            # Sort by ROI descending
-            df_markets["_roi_num"] = [float(x.replace("%", "").replace("+", "")) for x in df_markets["ROI"]]
-            df_markets = df_markets.sort_values("_roi_num", ascending=False).drop("_roi_num", axis=1)
-            
-            st.dataframe(
-                df_markets,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Market": st.column_config.TextColumn("Market", width="medium"),
-                    "Wetten": st.column_config.NumberColumn("Wetten", width="small"),
-                    "W/L": st.column_config.TextColumn("W/L", width="small"),
-                    "Win-Rate": st.column_config.TextColumn("Win-Rate", width="small"),
-                    "Gesamt P&L": st.column_config.TextColumn("P&L", width="medium"),
-                    "ROI": st.column_config.TextColumn("ROI", width="small"),
-                    "Ø Profit": st.column_config.TextColumn("Ø Profit", width="medium"),
-                }
-            )
-            
-            # Insights
-            best_market = max(market_stats.items(), key=lambda x: x[1]["total_profit"] / x[1]["total_staked"] if x[1]["total_staked"] > 0 else -999)
-            worst_market = min(market_stats.items(), key=lambda x: x[1]["total_profit"] / x[1]["total_staked"] if x[1]["total_staked"] > 0 else 999)
-            
-            col_insight1, col_insight2 = st.columns(2)
-            with col_insight1:
-                best_roi = (best_market[1]["total_profit"] / best_market[1]["total_staked"] * 100) if best_market[1]["total_staked"] > 0 else 0
-                st.success(f"🏆 **Bester Market:** {best_market[0]} ({best_roi:+.1f}% ROI)")
-            with col_insight2:
-                worst_roi = (worst_market[1]["total_profit"] / worst_market[1]["total_staked"] * 100) if worst_market[1]["total_staked"] > 0 else 0
-                if worst_roi < 0:
-                    st.error(f"⚠️ **Schwächster Market:** {worst_market[0]} ({worst_roi:+.1f}% ROI)")
-                else:
-                    st.info(f"📊 **Schwächster Market:** {worst_market[0]} ({worst_roi:+.1f}% ROI)")
+            if market_data:  # Only create DataFrame if data exists
+                df_markets = pd.DataFrame(market_data)
+                # Sort by ROI descending
+                df_markets["_roi_num"] = [float(x.replace("%", "").replace("+", "")) for x in df_markets["ROI"]]
+                df_markets = df_markets.sort_values("_roi_num", ascending=False).drop("_roi_num", axis=1)
+                
+                st.dataframe(
+                    df_markets,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Market": st.column_config.TextColumn("Market", width="medium"),
+                        "Wetten": st.column_config.NumberColumn("Wetten", width="small"),
+                        "W/L": st.column_config.TextColumn("W/L", width="small"),
+                        "Win-Rate": st.column_config.TextColumn("Win-Rate", width="small"),
+                        "Gesamt P&L": st.column_config.TextColumn("P&L", width="medium"),
+                        "ROI": st.column_config.TextColumn("ROI", width="small"),
+                        "Ø Profit": st.column_config.TextColumn("Ø Profit", width="medium"),
+                    }
+                )
+                
+                # Insights
+                best_market = max(market_stats.items(), key=lambda x: x[1]["total_profit"] / x[1]["total_staked"] if x[1]["total_staked"] > 0 else -999)
+                worst_market = min(market_stats.items(), key=lambda x: x[1]["total_profit"] / x[1]["total_staked"] if x[1]["total_staked"] > 0 else 999)
+                
+                col_insight1, col_insight2 = st.columns(2)
+                with col_insight1:
+                    best_roi = (best_market[1]["total_profit"] / best_market[1]["total_staked"] * 100) if best_market[1]["total_staked"] > 0 else 0
+                    st.success(f"🏆 **Bester Market:** {best_market[0]} ({best_roi:+.1f}% ROI)")
+                with col_insight2:
+                    worst_roi = (worst_market[1]["total_profit"] / worst_market[1]["total_staked"] * 100) if worst_market[1]["total_staked"] > 0 else 0
+                    if worst_roi < 0:
+                        st.error(f"⚠️ **Schwächster Market:** {worst_market[0]} ({worst_roi:+.1f}% ROI)")
+                    else:
+                        st.info(f"📊 **Schwächster Market:** {worst_market[0]} ({worst_roi:+.1f}% ROI)")
+            else:
+                st.info("Keine Market-Daten vorhanden")
             
             # ========== SECTION 3: PROFIT CHART ==========
             st.markdown("---")
