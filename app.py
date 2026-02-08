@@ -5551,8 +5551,8 @@ def main():
     match_name = None
 
     # Tab-Layout für verschiedene Funktionen
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["📊 Match-Analyse", "🧠 ML-Training", "📚 Trainingsdaten", "📈 Statistiken"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["📊 Match-Analyse", "🧠 ML-Training", "📚 Trainingsdaten", "📈 Statistiken", "💰 Demo-Performance"]
     )
     with tab1:
         # ---- Monat-State initialisieren (Start = aktueller Monat) ----
@@ -6436,6 +6436,283 @@ def main():
             3. ML-Modell trainiert wurde
             """
             )
+
+    with tab5:
+        st.header("💰 Demo-Mode Performance Dashboard")
+        
+        # Check ob Demo-Daten vorhanden
+        if not st.session_state.risk_management.get("stake_history"):
+            st.info("🎮 Noch keine Demo-Wetten vorhanden!")
+            st.markdown("""
+            **So funktioniert's:**
+            1. Aktiviere **Demo-Modus** in der Sidebar
+            2. Analysiere ein Match im Tab "Match-Analyse"
+            3. Wähle Wetten aus und markiere sie als Gewinn/Verlust
+            4. Komme zurück zu diesem Tab für Performance-Analyse
+            """)
+        else:
+            history = st.session_state.risk_management["stake_history"]
+            
+            # ========== SECTION 1: OVERVIEW METRICS ==========
+            st.subheader("📊 Gesamtübersicht")
+            
+            total_bets = len(history)
+            total_profit = sum([bet["profit"] for bet in history])
+            wins = len([b for b in history if b["profit"] > 0])
+            losses = len([b for b in history if b["profit"] < 0])
+            win_rate = (wins / total_bets * 100) if total_bets > 0 else 0
+            
+            total_staked = sum([bet["stake"] for bet in history])
+            roi = (total_profit / total_staked * 100) if total_staked > 0 else 0
+            avg_profit = total_profit / total_bets if total_bets > 0 else 0
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Wetten", total_bets)
+                st.caption(f"💰 Gesamt gesetzt: €{total_staked:,.2f}")
+            
+            with col2:
+                delta_color = "normal" if wins >= losses else "inverse"
+                st.metric(
+                    "Win-Rate", 
+                    f"{win_rate:.1f}%",
+                    delta=f"{wins}W / {losses}L"
+                )
+                st.caption(f"🎯 Durchschnitt: €{avg_profit:+.2f}/Wette")
+            
+            with col3:
+                profit_emoji = "🟢" if total_profit > 0 else "🔴" if total_profit < 0 else "⚪"
+                st.metric(
+                    "Gesamt P&L", 
+                    f"€{total_profit:,.2f}",
+                    delta=profit_emoji
+                )
+                current_bankroll = st.session_state.risk_management["bankroll"]
+                st.caption(f"💼 Bankroll: €{current_bankroll:,.2f}")
+            
+            with col4:
+                roi_emoji = "📈" if roi > 0 else "📉" if roi < 0 else "➡️"
+                st.metric("ROI", f"{roi:.1f}%", delta=roi_emoji)
+                avg_stake = total_staked / total_bets if total_bets > 0 else 0
+                st.caption(f"📊 Ø Einsatz: €{avg_stake:.2f}")
+            
+            # ========== SECTION 2: MARKET PERFORMANCE TABLE ==========
+            st.markdown("---")
+            st.subheader("🎯 Performance nach Market")
+            
+            # Group by market
+            market_stats = {}
+            for bet in history:
+                market = bet.get("market", "Unknown")
+                
+                if market not in market_stats:
+                    market_stats[market] = {
+                        "bets": 0,
+                        "wins": 0,
+                        "losses": 0,
+                        "total_staked": 0,
+                        "total_profit": 0
+                    }
+                
+                market_stats[market]["bets"] += 1
+                market_stats[market]["total_staked"] += bet["stake"]
+                market_stats[market]["total_profit"] += bet["profit"]
+                
+                if bet["profit"] > 0:
+                    market_stats[market]["wins"] += 1
+                elif bet["profit"] < 0:
+                    market_stats[market]["losses"] += 1
+            
+            # Create DataFrame
+            market_data = []
+            for market, stats in market_stats.items():
+                win_rate_market = (stats["wins"] / stats["bets"] * 100) if stats["bets"] > 0 else 0
+                roi_market = (stats["total_profit"] / stats["total_staked"] * 100) if stats["total_staked"] > 0 else 0
+                avg_profit_market = stats["total_profit"] / stats["bets"] if stats["bets"] > 0 else 0
+                
+                market_data.append({
+                    "Market": market,
+                    "Wetten": stats["bets"],
+                    "W/L": f"{stats['wins']}/{stats['losses']}",
+                    "Win-Rate": f"{win_rate_market:.1f}%",
+                    "Gesamt P&L": f"€{stats['total_profit']:,.2f}",
+                    "ROI": f"{roi_market:+.1f}%",
+                    "Ø Profit": f"€{avg_profit_market:+.2f}"
+                })
+            
+            df_markets = pd.DataFrame(market_data)
+            # Sort by ROI descending
+            df_markets["_roi_num"] = [float(x.replace("%", "").replace("+", "")) for x in df_markets["ROI"]]
+            df_markets = df_markets.sort_values("_roi_num", ascending=False).drop("_roi_num", axis=1)
+            
+            st.dataframe(
+                df_markets,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Market": st.column_config.TextColumn("Market", width="medium"),
+                    "Wetten": st.column_config.NumberColumn("Wetten", width="small"),
+                    "W/L": st.column_config.TextColumn("W/L", width="small"),
+                    "Win-Rate": st.column_config.TextColumn("Win-Rate", width="small"),
+                    "Gesamt P&L": st.column_config.TextColumn("P&L", width="medium"),
+                    "ROI": st.column_config.TextColumn("ROI", width="small"),
+                    "Ø Profit": st.column_config.TextColumn("Ø Profit", width="medium"),
+                }
+            )
+            
+            # Insights
+            best_market = max(market_stats.items(), key=lambda x: x[1]["total_profit"] / x[1]["total_staked"] if x[1]["total_staked"] > 0 else -999)
+            worst_market = min(market_stats.items(), key=lambda x: x[1]["total_profit"] / x[1]["total_staked"] if x[1]["total_staked"] > 0 else 999)
+            
+            col_insight1, col_insight2 = st.columns(2)
+            with col_insight1:
+                best_roi = (best_market[1]["total_profit"] / best_market[1]["total_staked"] * 100) if best_market[1]["total_staked"] > 0 else 0
+                st.success(f"🏆 **Bester Market:** {best_market[0]} ({best_roi:+.1f}% ROI)")
+            with col_insight2:
+                worst_roi = (worst_market[1]["total_profit"] / worst_market[1]["total_staked"] * 100) if worst_market[1]["total_staked"] > 0 else 0
+                if worst_roi < 0:
+                    st.error(f"⚠️ **Schwächster Market:** {worst_market[0]} ({worst_roi:+.1f}% ROI)")
+                else:
+                    st.info(f"📊 **Schwächster Market:** {worst_market[0]} ({worst_roi:+.1f}% ROI)")
+            
+            # ========== SECTION 3: PROFIT CHART ==========
+            st.markdown("---")
+            st.subheader("📈 Profit-Entwicklung")
+            
+            # Sort history by timestamp
+            sorted_history = sorted(history, key=lambda x: x.get("timestamp", ""))
+            
+            cumulative_profit = []
+            bankroll_development = []
+            bet_numbers = []
+            bet_labels = []
+            
+            cumulative = 0
+            for i, bet in enumerate(sorted_history, 1):
+                cumulative += bet["profit"]
+                cumulative_profit.append(cumulative)
+                bankroll_development.append(bet.get("bankroll_before", 0) + cumulative)
+                bet_numbers.append(i)
+                
+                # Create label for hover
+                timestamp = bet.get("timestamp", "").split(" ")[0]  # Only date
+                bet_labels.append(f"Wette #{i}<br>{timestamp}<br>{bet['market']}<br>{bet['match'][:30]}...")
+            
+            # Create figure
+            fig = go.Figure()
+            
+            # Add cumulative profit line
+            fig.add_trace(go.Scatter(
+                x=bet_numbers,
+                y=cumulative_profit,
+                mode='lines+markers',
+                name='Kumulativer Profit',
+                line=dict(
+                    color='green' if cumulative_profit[-1] > 0 else 'red',
+                    width=3
+                ),
+                fill='tozeroy',
+                fillcolor='rgba(0,255,0,0.1)' if cumulative_profit[-1] > 0 else 'rgba(255,0,0,0.1)',
+                hovertext=bet_labels,
+                hoverinfo='text+y'
+            ))
+            
+            # Add zero line
+            fig.add_hline(y=0, line_dash="dash", line_color="gray", annotation_text="Break-Even")
+            
+            fig.update_layout(
+                title="Kumulativer Profit über alle Wetten",
+                xaxis_title="Wette #",
+                yaxis_title="Profit (€)",
+                height=400,
+                hovermode='x unified',
+                showlegend=True
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # ========== SECTION 4: BEST & WORST BETS ==========
+            st.markdown("---")
+            
+            col_best, col_worst = st.columns(2)
+            
+            with col_best:
+                st.subheader("✅ Top 5 Gewinner")
+                
+                # Sort by profit descending
+                top_bets = sorted(history, key=lambda x: x["profit"], reverse=True)[:5]
+                
+                if top_bets and top_bets[0]["profit"] > 0:
+                    for i, bet in enumerate(top_bets, 1):
+                        if bet["profit"] <= 0:
+                            break
+                        
+                        match_info = bet.get("match", "Unknown Match")
+                        profit = bet["profit"]
+                        market = bet.get("market", "Unknown")
+                        stake = bet["stake"]
+                        roi_bet = (profit / stake * 100) if stake > 0 else 0
+                        timestamp = bet.get("timestamp", "").split(" ")[0]
+                        
+                        st.success(f"""
+**#{i}** - {match_info[:40]}  
+📅 {timestamp} | 🎯 {market}  
+💰 Stake: €{stake:.2f} → **Gewinn: €{profit:.2f}** ({roi_bet:+.1f}% ROI)
+                        """)
+                else:
+                    st.info("Noch keine gewonnenen Wetten")
+            
+            with col_worst:
+                st.subheader("❌ Top 5 Verluste")
+                
+                # Sort by profit ascending (most negative)
+                worst_bets = sorted(history, key=lambda x: x["profit"])[:5]
+                
+                if worst_bets and worst_bets[0]["profit"] < 0:
+                    for i, bet in enumerate(worst_bets, 1):
+                        if bet["profit"] >= 0:
+                            break
+                        
+                        match_info = bet.get("match", "Unknown Match")
+                        profit = bet["profit"]
+                        market = bet.get("market", "Unknown")
+                        stake = bet["stake"]
+                        timestamp = bet.get("timestamp", "").split(" ")[0]
+                        
+                        st.error(f"""
+**#{i}** - {match_info[:40]}  
+📅 {timestamp} | 🎯 {market}  
+💰 Stake: €{stake:.2f} → **Verlust: €{profit:.2f}**
+                        """)
+                else:
+                    st.info("Noch keine verlorenen Wetten")
+            
+            # ========== SECTION 5: EXPORT & RESET ==========
+            st.markdown("---")
+            
+            col_export, col_reset = st.columns([2, 1])
+            
+            with col_export:
+                st.subheader("📥 Export")
+                df_export = pd.DataFrame(history)
+                csv = df_export.to_csv(index=False)
+                st.download_button(
+                    "📊 Performance Report als CSV exportieren",
+                    csv,
+                    f"demo_performance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    "text/csv",
+                    use_container_width=True
+                )
+            
+            with col_reset:
+                st.subheader("🗑️ Reset")
+                if st.button("🗑️ Alle Demo-Daten löschen", use_container_width=True, type="secondary"):
+                    st.warning("⚠️ Dies löscht alle Demo-Wetten unwiderruflich!")
+                    if st.checkbox("✅ Ja, ich bin sicher", key="confirm_delete_demo"):
+                        st.session_state.risk_management["stake_history"] = []
+                        st.success("✅ Alle Demo-Daten gelöscht!")
+                        st.rerun()
 
     # Sidebar anzeigen
     show_sidebar()
