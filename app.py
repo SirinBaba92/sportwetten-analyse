@@ -6440,6 +6440,12 @@ def main():
     with tab5:
         st.header("💰 Demo-Mode Performance Dashboard")
         
+        # Explicit pandas reference to avoid scope issues
+        try:
+            import pandas as pd
+        except:
+            pass
+        
         # Check ob Demo-Daten vorhanden
         if not st.session_state.risk_management.get("stake_history"):
             st.info("🎮 Noch keine Demo-Wetten vorhanden!")
