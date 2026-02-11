@@ -4,8 +4,31 @@ Hauptdatei mit Streamlit UI
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime, date, timedelta
+
+
+def _scroll_to_analysis_anchor(anchor_id: str = "analysis_results") -> None:
+    """Scroll smoothly to a DOM element with the given id."""
+    try:
+        components.html(
+            f"""
+<script>
+(() => {{
+  const doc = window.parent.document;
+  const el = doc.getElementById("{anchor_id}");
+  if (el) {{
+    el.scrollIntoView({{ behavior: "smooth", block: "start" }});
+  }}
+}})();
+</script>
+""",
+            height=0,
+        )
+    except Exception:
+        # Never hard-fail on scrolling
+        pass
 
 # Config & Settings
 from config.constants import APP_TITLE, APP_ICON, APP_LAYOUT
@@ -238,6 +261,9 @@ from ui import (
     add_historical_match_ui,
 )
 
+# Navigator helpers
+from utils.match_index import build_match_index, get_flag_emoji
+
 # ML
 from ml import TablePositionML
 
@@ -294,8 +320,6 @@ def main():
                     st.error("❌ Export fehlgeschlagen")
 
     # Sidebar
-    show_sidebar()
-
     # Titel
     st.title(f"{APP_ICON} {APP_TITLE}")
     st.caption("🎯 SMART-PRECISION Algorithmus mit ML-Korrekturen")
@@ -331,17 +355,14 @@ def main():
     with col_info:
         st.info(f"📊 {len(date_to_id)} Tage mit Daten verfügbar")
 
-    # Datum-Navigation
-    st.markdown("---")
-    st.subheader("📅 Datum auswählen")
-
+    # Datum-Navigation (in Sidebar)
     # Konvertiere Datums-Strings zu date-Objekten
-    available_dates = []
+    available_dates: list[date] = []
     for date_str in date_to_id.keys():
         try:
             d = parse_date(date_str)
             available_dates.append(d)
-        except:
+        except Exception:
             continue
 
     available_dates.sort()
@@ -362,42 +383,7 @@ def main():
                 st.session_state.selected_date = min(future_dates)
             else:
                 st.session_state.selected_date = max(available_dates)
-
-    # Kompakter Datepicker mit Navigation
-    col_dp, col_jump1, col_jump2 = st.columns([2, 1, 1])
-
-    with col_dp:
-        selected_via_picker = st.date_input(
-            "Datum wählen:",
-            value=st.session_state.selected_date,
-            min_value=min(available_dates),
-            max_value=max(available_dates),
-        )
-
-        if selected_via_picker != st.session_state.selected_date:
-            if selected_via_picker in available_dates:
-                st.session_state.selected_date = selected_via_picker
-                st.rerun()
-            else:
-                st.warning("⚠️ Für dieses Datum sind keine Daten verfügbar!")
-
-    with col_jump1:
-        if st.button("⬅️ Vorheriger Tag mit Daten"):
-            current_idx = available_dates.index(st.session_state.selected_date)
-            if current_idx > 0:
-                new_date = available_dates[current_idx - 1]
-                st.session_state.selected_date = new_date
-                st.rerun()
-
-    with col_jump2:
-        if st.button("Nächster Tag mit Daten ➡️"):
-            current_idx = available_dates.index(st.session_state.selected_date)
-            if current_idx < len(available_dates) - 1:
-                new_date = available_dates[current_idx + 1]
-                st.session_state.selected_date = new_date
-                st.rerun()
-
-    # Ausgewähltes Datum
+# Ausgewähltes Datum
     selected_date_str = st.session_state.selected_date.strftime("%d.%m.%Y")
     st.success(f"✅ Ausgewähltes Datum: **{selected_date_str}**")
 
@@ -407,6 +393,9 @@ def main():
 
     sheet_id = date_to_id[selected_date_str]
 
+    # Convenience var (used by navigator)
+    selected_date = st.session_state.selected_date
+
     # Lade Matches für den Tag
     match_tabs = list_match_tabs_for_day(sheet_id)
 
@@ -415,6 +404,35 @@ def main():
         st.stop()
 
     st.info(f"🎯 {len(match_tabs)} Matches verfügbar für {selected_date_str}")
+
+    # ================== MATCH NAVIGATOR INDEX (cached) ==================
+    match_index = build_match_index(sheet_id, tuple(match_tabs))
+
+    # Sidebar (Navigator + Settings)
+    today = date.today()
+    today_str = today.strftime("%d.%m.%Y")
+    today_count = 0
+    if today_str in date_to_id:
+        _sid_today = date_to_id[today_str]
+        _tabs_today = list_match_tabs_for_day(_sid_today) or []
+        today_count = len(_tabs_today)
+
+    def _on_date_change(new_date: date):
+        st.session_state.selected_date = new_date
+        # schedule sidebar date picker update for next run (avoid modifying widget state after instantiation)
+        st.session_state['_pending_nav_date'] = new_date
+
+    show_sidebar(
+        navigator={
+            "available_dates": available_dates,
+            "selected_date": selected_date,
+            "today": today,
+            "today_count": today_count,
+            "match_index": match_index,
+            "on_date_change": _on_date_change,
+            "flag_fn": get_flag_emoji,
+        }
+    )
 
     # Tabs
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
@@ -430,53 +448,150 @@ def main():
     # ================== TAB 1: MATCH-ANALYSE ==================
     with tab1:
         st.header("⚽ Match-Analyse")
+        # UI: Card styling for match list
+        st.markdown("""
+<style>
+.match-card { padding: 12px 14px; border: 1px solid rgba(49,51,63,0.2); border-radius: 12px; margin-bottom: 10px; }
+.match-meta { opacity: 0.75; font-size: 0.9rem; }
+</style>
+""", unsafe_allow_html=True)
 
-        # Match-Suche
-        search_query = st.text_input(
-            "🔍 Match suchen", placeholder="Teamname eingeben..."
-        )
 
-        # Filter Matches
-        if search_query:
-            filtered_tabs = [t for t in match_tabs if search_query.lower() in t.lower()]
+        # Navigator-driven Matchliste (Sidebar steuert Filter/Selection)
+        if "nav_view_mode" not in st.session_state:
+            st.session_state.nav_view_mode = "all"
+        if "nav_selected_country" not in st.session_state:
+            st.session_state.nav_selected_country = ""
+        if "nav_selected_league" not in st.session_state:
+            st.session_state.nav_selected_league = ""
+        if "nav_search_query" not in st.session_state:
+            st.session_state.nav_search_query = ""
+        if "selected_tab" not in st.session_state:
+            st.session_state.selected_tab = ""
+
+        view_mode = st.session_state.get("nav_view_mode", "all")
+        country_sel = (st.session_state.get("nav_selected_country") or "").strip()
+        league_sel = (st.session_state.get("nav_selected_league") or "").strip()
+        q = (st.session_state.get("nav_search_query") or "").strip().lower()
+
+        filtered = match_index
+        if view_mode == "league" and country_sel and league_sel:
+            filtered = [m for m in match_index if (m.get("country")==country_sel and m.get("league")==league_sel)]
+        elif view_mode == "search" and q:
+            def _hit(m):
+                hay = " ".join([
+                    str(m.get("home","")), str(m.get("away","")), str(m.get("country","")), str(m.get("league","")), str(m.get("competition","")), str(m.get("tab",""))
+                ]).lower()
+                return q in hay
+            filtered = [m for m in match_index if _hit(m)]
+        # else: all
+        filtered_tabs = [m.get("tab") for m in filtered]
+
+        title_bits = []
+        if view_mode == "league" and league_sel:
+            title_bits.append(f"{country_sel} / {league_sel}")
+        if view_mode == "search" and q:
+            title_bits.append(f"Suche: \"{q}\"")
+        subtitle = (" – ".join(title_bits)) if title_bits else "Alle Spiele"
+        st.subheader(f"🧾 Spiele ({len(filtered)}) · {subtitle}")
+
+        if not filtered:
+            st.warning("Keine Spiele für den aktuellen Filter gefunden.")
         else:
-            filtered_tabs = match_tabs
+            for m in filtered:
+                home = m.get("home", "")
+                away = m.get("away", "")
+                flag = m.get("flag", "🌍")
+                league = m.get("league", "")
+                kickoff = m.get("kickoff", "")
+                tab = m.get("tab")
 
-        if not filtered_tabs:
-            st.warning(f"Keine Matches gefunden für '{search_query}'")
-            st.stop()
+                match_key = f"{sheet_id}::{tab}"
 
-        # Match Selector
-        selected_tab = st.selectbox(
-            f"Match auswählen ({len(filtered_tabs)} verfügbar)",
-            options=filtered_tabs,
-            key="match_selector",
-        )
+                meta = f"{flag} {league}"
+                if kickoff:
+                    meta += f" · ⏱️ {kickoff}"
+
+                st.markdown(
+                    f"""
+<div class='match-card'>
+  <div><b>{home} vs {away}</b></div>
+  <div class='match-meta'>{meta}</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+
+                if st.button("🎯 Analysieren", key=f"an::{match_key}", use_container_width=True):
+                    st.session_state.selected_tab = tab
+                    st.session_state._trigger_analyze_tab = tab
+                    st.session_state._scroll_to_results = True
+                    st.rerun()
+
+
+        selected_tab = st.session_state.get("selected_tab") or ""
+        if selected_tab:
+            st.success(f"✅ Ausgewählt: **{selected_tab}**")
+        else:
+            st.info("⬅️ Wähle links (Sidebar) eine Liga oder klicke auf ein Spiel.")
+
+
+        # Auto-zeige letzte Analyse (falls vorhanden)
+        if "analysis_cache_by_tab" not in st.session_state:
+            st.session_state.analysis_cache_by_tab = {}
+        _cache_key = f"{sheet_id}::{selected_tab}" if selected_tab else ""
+        if selected_tab and _cache_key in st.session_state.analysis_cache_by_tab:
+            st.markdown("<div id='analysis_results'></div>", unsafe_allow_html=True)
+            if st.session_state.get("_scroll_to_results"):
+                _scroll_to_analysis_anchor("analysis_results")
+                st.session_state._scroll_to_results = False
+            st.markdown("### 🧠 Letztes Analyse-Ergebnis")
+            display_results(st.session_state.analysis_cache_by_tab[_cache_key])
+            st.markdown("---")
 
         # Lade Match-Daten
+
         with st.expander("📄 Rohdaten anzeigen"):
-            match_text = read_worksheet_text_by_id(sheet_id, selected_tab)
-            if match_text:
-                st.text_area("Daten", match_text, height=300)
+            if not selected_tab:
+                st.info("Bitte zuerst ein Match auswählen.")
             else:
-                st.error("Fehler beim Laden der Daten")
+                match_text = read_worksheet_text_by_id(sheet_id, selected_tab)
+                if match_text:
+                    st.text_area("Daten", match_text, height=300)
+                else:
+                    st.error("Fehler beim Laden der Daten")
 
         # Analyse-Buttons
+
+        # Auto-Trigger aus Match-Karte (setzt selected_tab und startet Analyse ohne extra Klick)
+        auto_tab = st.session_state.pop("_trigger_analyze_tab", "")
+        auto_analyze = bool(auto_tab)
+        if auto_tab:
+            st.session_state.selected_tab = auto_tab
+            selected_tab = auto_tab
+
+        col_single, col_all = st.columns(2)
+
         col_single, col_all = st.columns(2)
 
         with col_single:
             analyze_single = st.button(
-                f"🎯 Analysiere: {selected_tab}", use_container_width=True
+                "🎯 Analysiere ausgewähltes Match",
+                use_container_width=True,
+                disabled=not bool(selected_tab),
             )
+            if analyze_single:
+                st.session_state._scroll_to_results = True
 
         with col_all:
             analyze_all = st.button(
-                f"📊 Analysiere alle {len(filtered_tabs)} Matches",
+                f"📊 Analysiere alle {len(filtered_tabs)} Matches (aktueller Filter)",
                 use_container_width=True,
+                disabled=not bool(filtered_tabs),
             )
 
         # SINGLE MATCH ANALYSE
-        if analyze_single:
+        if analyze_single or auto_analyze:
             with st.spinner(f"Analysiere {selected_tab}..."):
                 match_text = read_worksheet_text_by_id(sheet_id, selected_tab)
 
@@ -540,7 +655,17 @@ def main():
                         match_key = f"{result['match_info']['home']}_{result['match_info']['away']}"
                         st.session_state.current_match_result[match_key] = result
 
+                        # Cache pro Tab (für Auto-Anzeige beim nächsten Klick)
+                        if "analysis_cache_by_tab" not in st.session_state:
+                            st.session_state.analysis_cache_by_tab = {}
+                        _ck = f"{sheet_id}::{selected_tab}"
+                        st.session_state.analysis_cache_by_tab[_ck] = result
+
                         # Zeige Ergebnisse
+                        st.markdown("<div id='analysis_results'></div>", unsafe_allow_html=True)
+                        if st.session_state.get("_scroll_to_results"):
+                            _scroll_to_analysis_anchor("analysis_results")
+                            st.session_state._scroll_to_results = False
                         display_results(result)
 
                         # Export-Button - OPTIMIERTE VERSION

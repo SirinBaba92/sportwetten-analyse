@@ -298,6 +298,66 @@ def read_worksheet_text_by_id(spreadsheet_id: str, sheet_name: str) -> Optional[
         st.error(f"❌ Fehler: {e}")
         return None
 
+@st.cache_data(ttl=300)
+def read_worksheet_text_range_by_id(
+    spreadsheet_id: str, sheet_name: str, a1_range: str = "A1:Z40"
+) -> Optional[str]:
+    """
+    Liest nur einen kleinen Bereich eines Worksheets (für schnelle Navigator-Indizes).
+
+    Args:
+        spreadsheet_id: Google Sheets ID
+        sheet_name: Worksheet Name
+        a1_range: Bereich ohne Sheet-Name, z.B. "A1:Z40"
+
+    Returns:
+        Text-Repräsentation oder None
+    """
+    try:
+        service = connect_to_sheets(readonly=True)
+        if service is None:
+            return None
+
+        range_name = f"'{sheet_name}'!{a1_range}"
+        result = (
+            service.spreadsheets()
+            .values()
+            .get(spreadsheetId=spreadsheet_id, range=range_name)
+            .execute()
+        )
+        data = result.get("values", [])
+
+        text_data = []
+        for row in data:
+            if any(cell.strip() for cell in row if cell):
+                text_data.append("\t".join(row))
+
+        return "\n".join(text_data)
+
+    except Exception as e:
+        st.error(f"❌ Fehler: {e}")
+        return None
+        range_name = f"'{sheet_name}'!A:Z"
+        result = (
+            service.spreadsheets()
+            .values()
+            .get(spreadsheetId=spreadsheet_id, range=range_name)
+            .execute()
+        )
+
+        data = result.get("values", [])
+
+        text_data = []
+        for row in data:
+            if any(cell.strip() for cell in row if cell):
+                text_data.append("\t".join(row))
+
+        return "\n".join(text_data)
+
+    except Exception as e:
+        st.error(f"❌ Fehler: {e}")
+        return None
+
 
 def get_tracking_sheet_id():
     """
@@ -314,3 +374,72 @@ def get_tracking_sheet_id():
         or tracking.get("sheet_id_v48")
         or tracking.get("sheet_id_v47")
     )
+
+
+
+@st.cache_data(ttl=300)
+def read_worksheet_values_range_by_id(
+    spreadsheet_id: str, sheet_name: str, a1_range: str = "B4:E7"
+) -> Optional[List[List[str]]]:
+    """
+    Reads a small value range and returns the raw 2D values.
+    Useful for fast match-header indexing without scanning large sheets.
+
+    Args:
+        spreadsheet_id: Google Sheets ID
+        sheet_name: Worksheet name
+        a1_range: Range without sheet name, e.g. "B4:E7"
+
+    Returns:
+        List of rows (each row is a list of strings) or None.
+    """
+    try:
+        service = connect_to_sheets(readonly=True)
+        if service is None:
+            return None
+
+        range_name = f"\'{sheet_name}\'!{a1_range}"
+        result = (
+            service.spreadsheets()
+            .values()
+            .get(spreadsheetId=spreadsheet_id, range=range_name)
+            .execute()
+        )
+        return result.get("values", [])
+    except Exception:
+        return None
+
+@st.cache_data(ttl=300)
+def batch_get_worksheet_values_ranges_by_id(
+    spreadsheet_id: str,
+    ranges: tuple[str, ...],
+) -> Dict[str, List[List[str]]]:
+    """
+    Batch reads multiple ranges from a single spreadsheet in ONE API call.
+
+    Args:
+        spreadsheet_id: Google Sheets ID
+        ranges: A1 ranges including sheet name, e.g. ("'Tab1'!B4:E7", "'Tab2'!B4:E7")
+
+    Returns:
+        Mapping: range -> values (2D list)
+    """
+    try:
+        service = connect_to_sheets(readonly=True)
+        if service is None:
+            return {}
+
+        result = (
+            service.spreadsheets()
+            .values()
+            .batchGet(spreadsheetId=spreadsheet_id, ranges=list(ranges))
+            .execute()
+        )
+
+        out: Dict[str, List[List[str]]] = {}
+        for vr in result.get("valueRanges", []) or []:
+            r = vr.get("range", "")
+            out[r] = vr.get("values", []) or []
+        return out
+    except Exception:
+        return {}

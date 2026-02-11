@@ -4,16 +4,165 @@ Sidebar UI-Komponente
 
 import streamlit as st
 import pandas as pd
+from datetime import date
 from config.constants import RISK_PROFILES, APP_VERSION, APP_FEATURES
 from data.google_sheets import get_tracking_sheet_id, connect_to_sheets
 from models.tracking import update_match_result_in_sheets
+from utils.match_index import group_matches_by_country_league
 
 
-def show_sidebar():
+def show_sidebar(navigator: dict | None = None):
     """
     Zeigt die Sidebar mit allen Einstellungen und Funktionen
     """
     with st.sidebar:
+        # ==================== MATCH NAVIGATOR (optional) ====================
+        if navigator:
+            st.title("🧭 Matches")
+
+            available_dates = navigator.get("available_dates") or []
+            selected_date = navigator.get("selected_date")
+            today = navigator.get("today") or date.today()
+
+            # ---- apply pending date update BEFORE date_input is created ----
+            if "_pending_nav_date" in st.session_state:
+                pending = st.session_state.pop("_pending_nav_date", None)
+                if pending:
+                    st.session_state["nav_date_picker"] = pending
+                    selected_date = pending
+
+            # --- AUTO-FIX: if selected_date is not available, jump to next available with data ---
+            if available_dates and selected_date and (selected_date not in available_dates):
+                sorted_dates = sorted(available_dates)
+                new_date = next((d for d in sorted_dates if d >= selected_date), sorted_dates[-1])
+
+                # avoid loops
+                last_fix = st.session_state.get("_nav_last_autofix")
+                if last_fix != (selected_date, new_date):
+                    st.session_state["_nav_last_autofix"] = (selected_date, new_date)
+                    navigator["on_date_change"](new_date)
+                    st.rerun()
+
+            # Date picker
+            if available_dates and selected_date:
+                min_d = min(available_dates)
+                max_d = max(available_dates)
+
+                # initialize widget state once (no value=... to avoid warnings)
+                if "nav_date_picker" not in st.session_state:
+                    st.session_state["nav_date_picker"] = selected_date
+
+                picked = st.date_input(
+                    "📅 Datum",
+                    min_value=min_d,
+                    max_value=max_d,
+                    key="nav_date_picker",
+                )
+
+                if picked != selected_date:
+                    navigator["on_date_change"](picked)
+
+                    # reset view/filter to all matches on date change
+                    st.session_state.nav_view_mode = "all"
+                    st.session_state.nav_selected_country = ""
+                    st.session_state.nav_selected_league = ""
+                    st.session_state.nav_search_query = ""
+                    st.rerun()
+
+            # Prev/Next day with data (based on available_dates)
+            cols = st.columns(2)
+
+            try:
+                current_idx = (
+                    available_dates.index(selected_date)
+                    if (available_dates and selected_date in available_dates)
+                    else -1
+                )
+            except Exception:
+                current_idx = -1
+
+            has_prev = current_idx > 0
+            has_next = current_idx != -1 and current_idx < (len(available_dates) - 1)
+
+            with cols[0]:
+                if st.button(
+                    "⬅️ Vorheriger Tag mit Daten",
+                    use_container_width=True,
+                    disabled=not has_prev,
+                ):
+                    new_date = available_dates[current_idx - 1]
+                    navigator["on_date_change"](new_date)
+
+                    # reset view/filter
+                    st.session_state.nav_view_mode = "all"
+                    st.session_state.nav_selected_country = ""
+                    st.session_state.nav_selected_league = ""
+                    st.session_state.nav_search_query = ""
+                    st.rerun()
+
+            with cols[1]:
+                if st.button(
+                    "Nächster Tag mit Daten ➡️",
+                    use_container_width=True,
+                    disabled=not has_next,
+                ):
+                    new_date = available_dates[current_idx + 1]
+                    navigator["on_date_change"](new_date)
+
+                    # reset view/filter
+                    st.session_state.nav_view_mode = "all"
+                    st.session_state.nav_selected_country = ""
+                    st.session_state.nav_selected_league = ""
+                    st.session_state.nav_search_query = ""
+                    st.rerun()
+
+            # Search
+            q = st.text_input(
+                "🔍 Suche (Team / Liga)",
+                value=st.session_state.get("nav_search_query", ""),
+                key="nav_search_input",
+            )
+            st.session_state.nav_search_query = q
+            if q.strip():
+                st.session_state.nav_view_mode = "search"
+
+            match_index = navigator.get("match_index") or []
+            grouped = group_matches_by_country_league(match_index)
+
+            # Country / League expanders
+            if match_index:
+                st.markdown("### 🌍 Ligen nach Land")
+
+                country_items = []
+                for c, leagues in grouped.items():
+                    cnt = sum(len(v) for v in leagues.values())
+                    country_items.append((c, leagues, cnt))
+                country_items.sort(key=lambda x: (-x[2], x[0]))
+
+                for country, leagues, cnt in country_items:
+                    flag = (
+                        navigator.get("flag_fn")(country)
+                        if navigator.get("flag_fn")
+                        else "🌍"
+                    )
+                    with st.expander(f"{flag} {country} ({cnt})", expanded=False):
+                        league_items = [(lg, ms, len(ms)) for lg, ms in leagues.items()]
+                        league_items.sort(key=lambda x: (-x[2], x[0]))
+                        for league, _ms, lcnt in league_items:
+                            if st.button(
+                                f"• {league} ({lcnt})",
+                                key=f"nav_league_{country}_{league}",
+                                use_container_width=True,
+                            ):
+                                st.session_state.nav_view_mode = "league"
+                                st.session_state.nav_selected_country = country
+                                st.session_state.nav_selected_league = league
+                                st.session_state.nav_search_query = ""
+                                st.rerun()
+
+            st.markdown("---")
+
+        # ==================== SETTINGS ====================
         st.title("⚙️ Einstellungen")
 
         # Risk Management
@@ -22,7 +171,6 @@ def show_sidebar():
 
         demo_mode = st.session_state.get("enable_demo_mode", False)
 
-        # Bankroll - read-only im Demo-Modus
         current_bankroll = st.session_state.risk_management["bankroll"]
 
         if demo_mode:
@@ -43,7 +191,6 @@ def show_sidebar():
             )
             st.session_state.risk_management["bankroll"] = new_bankroll
 
-        # Risk Profile
         current_profile = st.session_state.risk_management["risk_profile"]
         profile_names = {k: v["name"] for k, v in RISK_PROFILES.items()}
 
@@ -56,7 +203,6 @@ def show_sidebar():
 
         st.session_state.risk_management["risk_profile"] = selected_profile
 
-        # Zeige Profil-Details
         profile_info = RISK_PROFILES[selected_profile]
         st.caption(
             f"📊 {profile_info['description']} (Max: {profile_info['max_stake_percent']}%)"
@@ -66,7 +212,6 @@ def show_sidebar():
         st.markdown("---")
         st.subheader("📝 Ergebnis eintragen")
 
-        # Lade PENDING Predictions
         sheet_id = get_tracking_sheet_id()
         pending_matches = []
 
@@ -112,220 +257,37 @@ def show_sidebar():
                 format_func=lambda x: f"{x} ({next(m['predicted'] for m in pending_matches if m['match'] == x)})",
             )
 
-            selected_info = next(
-                m for m in pending_matches if m["match"] == selected_match
-            )
+            selected_info = next(m for m in pending_matches if m["match"] == selected_match)
             st.caption(f"📅 {selected_info['date']}")
 
             col1, col2 = st.columns(2)
+
             with col1:
-                home_goals = st.number_input(
-                    "Heim-Tore", min_value=0, max_value=20, value=0, step=1
-                )
+                actual_score = st.text_input("Endstand (z.B. 2:1)")
+
             with col2:
-                away_goals = st.number_input(
-                    "Auswärts-Tore", min_value=0, max_value=20, value=0, step=1
+                status = st.selectbox(
+                    "Ergebnis",
+                    options=["WIN", "LOSS", "VOID"],
+                    format_func=lambda x: {"WIN": "✅ Gewinn", "LOSS": "❌ Verlust", "VOID": "⚪ Storno"}[x],
                 )
 
-            if st.button("💾 Ergebnis speichern", use_container_width=True):
-                actual_score = f"{home_goals}:{away_goals}"
-                if update_match_result_in_sheets(selected_match, actual_score):
-                    st.success(f"✅ Ergebnis {actual_score} gespeichert!")
+            if st.button("💾 Speichern", type="primary"):
+                try:
+                    update_match_result_in_sheets(selected_match, actual_score, status)
+                    st.success("✅ Ergebnis gespeichert!")
                     st.rerun()
-                else:
-                    st.error("❌ Fehler beim Speichern")
-
+                except Exception as e:
+                    st.error(f"❌ Fehler beim Speichern: {e}")
         else:
-            st.info("✅ Keine offenen Vorhersagen")
+            st.caption("✅ Keine offenen Predictions")
 
-        # Bankroll Statistiken
+        # App Info
         st.markdown("---")
-        st.subheader("📊 Bankroll Statistiken")
+        st.subheader("ℹ️ App Info")
 
-        stake_history = st.session_state.risk_management.get("stake_history", [])
-
-        if stake_history:
-            recent_stakes = stake_history[-10:]
-            total_profit = sum(s["profit"] for s in recent_stakes)
-            wins = sum(1 for s in recent_stakes if s["profit"] > 0)
-            win_rate = (wins / len(recent_stakes)) * 100 if recent_stakes else 0
-
-            col1, col2 = st.columns(2)
-            col1.metric("Letzte 10 Wetten", f"{win_rate:.0f}% WR")
-            col2.metric("P&L", f"€{total_profit:+.2f}")
-
-            # Reset Button
-            if st.button("🔄 Bankroll zurücksetzen", use_container_width=True):
-                st.session_state.risk_management["bankroll"] = 1000.0
-                st.session_state.risk_management["stake_history"] = []
-                st.success("✅ Bankroll zurückgesetzt!")
-                st.rerun()
-
-            # Bet History Expander
-            with st.expander("📜 Wett-Historie (Letzte 5)"):
-                for stake in reversed(recent_stakes[-5:]):
-                    status = "✅" if stake["profit"] > 0 else "❌"
-                    st.caption(
-                        f"{status} {stake['match']} ({stake['market']}): €{stake['profit']:+.2f}"
-                    )
-
-        else:
-            st.info("Noch keine Wetten platziert")
-
-        # Google Sheets Info
-        st.markdown("---")
-        st.subheader("📊 Google Sheets")
-
-        if sheet_id:
-            st.success("✅ Verbunden")
-
-            try:
-                service = connect_to_sheets(readonly=True)
-                if service:
-                    result = (
-                        service.spreadsheets()
-                        .values()
-                        .get(spreadsheetId=sheet_id, range="PREDICTIONS!A:A")
-                        .execute()
-                    )
-                    row_count = len(result.get("values", [])) - 1
-                    st.caption(f"📝 {row_count} Vorhersagen gespeichert")
-            except:
-                pass
-
-        else:
-            st.warning("⚠️ Nicht verbunden")
-
-        # Alarm Settings
-        with st.expander("🔔 Alarm-Einstellungen"):
-            st.caption("Schwellenwerte für kritische Situationen")
-
-            new_mu_threshold = st.number_input(
-                "μ-Total Schwelle",
-                value=st.session_state.alert_thresholds["mu_total_high"],
-                min_value=3.0,
-                max_value=6.0,
-                step=0.5,
-            )
-
-            new_tki_threshold = st.number_input(
-                "TKI-Krise Schwelle",
-                value=st.session_state.alert_thresholds["tki_high"],
-                min_value=0.5,
-                max_value=2.0,
-                step=0.1,
-            )
-
-            new_ppg_threshold = st.number_input(
-                "PPG-Differenz Extrem",
-                value=st.session_state.alert_thresholds["ppg_diff_extreme"],
-                min_value=1.0,
-                max_value=3.0,
-                step=0.1,
-            )
-
-            if st.button("💾 Schwellenwerte speichern"):
-                st.session_state.alert_thresholds["mu_total_high"] = new_mu_threshold
-                st.session_state.alert_thresholds["tki_high"] = new_tki_threshold
-                st.session_state.alert_thresholds["ppg_diff_extreme"] = (
-                    new_ppg_threshold
-                )
-                st.success("✅ Gespeichert!")
-
-        # Quick Actions
-        st.markdown("---")
-        st.subheader("⚡ Quick Actions")
-
-        if st.button("🔄 Cache leeren", use_container_width=True):
-            st.cache_data.clear()
-            st.success("✅ Cache geleert!")
-
-        if st.button("🤖 ML neu laden", use_container_width=True):
-            from ml.position_ml import TablePositionML
-
-            st.session_state.position_ml_model = TablePositionML()
-            st.success("✅ ML-Modell neu initialisiert!")
-
-        # Demo Mode Toggle
-        st.markdown("---")
-        demo_enabled = st.toggle(
-            "🎮 Demo-Modus",
-            value=st.session_state.get("enable_demo_mode", False),
-            help="Ermöglicht simulierte Wetten ohne echtes Geld",
-        )
-        st.session_state.enable_demo_mode = demo_enabled
-
-        if demo_enabled:
-            st.info("🎮 Demo-Modus aktiv - Simuliere Wetten!")
-
-        # Strategy Info
-        with st.expander("📚 Strategie-Info"):
-            st.markdown(
-                """
-            **v4.7+ SMART-PRECISION:**
-            - Basis μ aus xG + Tore/Spiel
-            - Form-Faktoren (0.7-1.2)
-            - TKI überschreibt Form-Malus
-            - Dominanz-Dämpfer aktiv
-            - Clean Sheet Validierung
-            - ML-Korrekturen (Position)
-            
-            **Risk-Scoring:**
-            - Skala: 1 (extrem) bis 5 (optimal)
-            - Target: 60-70% bei 3/5
-            - EV-Adjustments aktiv
-            """
-            )
-
-        # Risk Scoring Explanation
-        with st.expander("ℹ️ Risiko-Scoring Erklärung"):
-            st.markdown(
-                """
-            **1/5 - Extrem risikant** ☠️
-            - Sehr spekulativ
-            - EV < -15%
-            - Vermeiden!
-            
-            **2/5 - Hohes Risiko** ⚠️
-            - Nur für Profis
-            - Kleiner Einsatz
-            - EV < -5%
-            
-            **3/5 - Moderates Risiko** 📊
-            - Standard-Wette
-            - Normaler Einsatz
-            - EV: -5% bis +8%
-            
-            **4/5 - Geringes Risiko** ✅
-            - Gute Wettmöglichkeit
-            - Empfohlener Einsatz
-            - EV: +8% bis +18%
-            
-            **5/5 - Optimales Risiko** 🎯
-            - Seltene Top-Wette
-            - Erhöhter Einsatz möglich
-            - EV > +18%
-            """
-            )
-
-        # Search Tips
-        with st.expander("🔍 Such-Tipps"):
-            st.markdown(
-                """
-            **Match-Suche:**
-            - Teamnamen direkt eingeben
-            - z.B. "Bayern" findet "Bayern München"
-            - Groß-/Kleinschreibung egal
-            
-            **Datum-Navigation:**
-            - Kalender zeigt verfügbare Tage
-            - Pfeil-Buttons: Vor/Zurück
-            - Heute-Button: Springt zu heute
-            """
-            )
-
-        # Version Info
-        st.markdown("---")
-        st.caption(f"**{APP_VERSION}**")
-        for feature in APP_FEATURES:
-            st.caption(feature)
+        st.caption(f"Version: {APP_VERSION}")
+        if APP_FEATURES:
+            st.caption("Features:")
+            for feat in APP_FEATURES:
+                st.caption(f"• {feat}")
