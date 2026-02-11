@@ -2,23 +2,24 @@
 Google Sheets und Google Drive Verbindungsfunktionen
 """
 
-import streamlit as st
 import re
+from datetime import datetime, date
+from typing import Dict, List, Optional, Tuple
+
+import streamlit as st
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from typing import Dict, List, Optional
-from datetime import datetime, date
 
 from config.constants import DRIVE_SCOPES, SHEETS_SCOPES
 
 
-def connect_to_sheets(readonly=True):
+def connect_to_sheets(readonly: bool = True):
     """
     Verbindet sich mit Google Sheets API
-    
+
     Args:
         readonly: Wenn True, nur Lesezugriff
-        
+
     Returns:
         Google Sheets Service oder None bei Fehler
     """
@@ -37,7 +38,7 @@ def connect_to_sheets(readonly=True):
 def connect_to_drive():
     """
     Verbindet sich mit Google Drive API
-    
+
     Returns:
         Google Drive Service oder None bei Fehler
     """
@@ -60,10 +61,10 @@ DATE_NAME_RE = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
 def list_daily_sheets_in_folder(folder_id: str) -> Dict[str, str]:
     """
     Listet alle Tabellenblätter in einem Ordner auf, die nach Datum benannt sind
-    
+
     Args:
         folder_id: Google Drive Ordner-ID
-        
+
     Returns:
         Dictionary: '15.12.2025' -> '<spreadsheetId>'
     """
@@ -108,10 +109,10 @@ def list_daily_sheets_in_folder(folder_id: str) -> Dict[str, str]:
 def list_match_tabs_for_day(sheet_id: str) -> List[str]:
     """
     Listet alle Worksheet-Titel in einem Spreadsheet auf
-    
+
     Args:
         sheet_id: Google Sheets ID
-        
+
     Returns:
         Liste der Worksheet-Titel in Reihenfolge
     """
@@ -127,7 +128,6 @@ def list_match_tabs_for_day(sheet_id: str) -> List[str]:
 
     sheets = meta.get("sheets", [])
     sheets_sorted = sorted(sheets, key=lambda s: s["properties"].get("index", 0))
-
     return [s["properties"]["title"] for s in sheets_sorted]
 
 
@@ -135,11 +135,11 @@ def list_match_tabs_for_day(sheet_id: str) -> List[str]:
 def read_sheet_range(sheet_id: str, a1_range: str) -> List[List[str]]:
     """
     Liest einen Bereich aus einem Google Sheet
-    
+
     Args:
         sheet_id: Google Sheets ID
         a1_range: A1-Notation Bereich (z.B. "Sheet1!A:Z")
-        
+
     Returns:
         2D-Liste mit Zellenwerten
     """
@@ -158,31 +158,20 @@ def read_sheet_range(sheet_id: str, a1_range: str) -> List[List[str]]:
 def parse_date(d: str) -> date:
     """
     Parst Datumsstring im Format dd.mm.yyyy
-    
-    Args:
-        d: Datumsstring
-        
-    Returns:
-        date Objekt
     """
     return datetime.strptime(d, "%d.%m.%Y").date()
 
 
 @st.cache_resource
-def get_all_worksheets(sheet_url):
+def get_all_worksheets(sheet_url: str):
     """
     Holt alle Worksheets aus einer Google Sheets URL
-    
-    Args:
-        sheet_url: Vollständige Google Sheets URL
-        
-    Returns:
-        Dictionary: worksheet_title -> sheet_id oder None
     """
     try:
         service = connect_to_sheets(readonly=True)
         if service is None:
             return None
+
         spreadsheet_id = sheet_url.split("/d/")[1].split("/")[0]
         sheet_metadata = (
             service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
@@ -198,21 +187,15 @@ def get_all_worksheets(sheet_url):
 
 
 @st.cache_data(ttl=300)
-def read_worksheet_data(sheet_url, sheet_name):
+def read_worksheet_data(sheet_url: str, sheet_name: str) -> Optional[str]:
     """
-    Liest Worksheet-Daten aus Google Sheets
-    
-    Args:
-        sheet_url: Vollständige Google Sheets URL
-        sheet_name: Name des Worksheets
-        
-    Returns:
-        Text-Repräsentation der Daten oder None
+    Liest Worksheet-Daten aus Google Sheets (Text-Repräsentation A:Z)
     """
     try:
         service = connect_to_sheets(readonly=True)
         if service is None:
             return None
+
         spreadsheet_id = sheet_url.split("/d/")[1].split("/")[0]
         range_name = f"'{sheet_name}'!A:Z"
         result = (
@@ -222,7 +205,8 @@ def read_worksheet_data(sheet_url, sheet_name):
             .execute()
         )
         data = result.get("values", [])
-        text_data = []
+
+        text_data: List[str] = []
         for row in data:
             if any(cell.strip() for cell in row if cell):
                 text_data.append("\t".join(row))
@@ -236,12 +220,6 @@ def read_worksheet_data(sheet_url, sheet_name):
 def get_all_worksheets_by_id(spreadsheet_id: str):
     """
     Wie get_all_worksheets(), aber bekommt direkt die spreadsheetId
-    
-    Args:
-        spreadsheet_id: Google Sheets ID
-        
-    Returns:
-        Dictionary: worksheet_title -> sheet_id oder None
     """
     try:
         service = connect_to_sheets(readonly=True)
@@ -251,10 +229,8 @@ def get_all_worksheets_by_id(spreadsheet_id: str):
         sheet_metadata = (
             service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         )
-
         sheets = sheet_metadata.get("sheets", [])
         return {s["properties"]["title"]: s["properties"]["sheetId"] for s in sheets}
-
     except Exception as e:
         st.error(f"❌ Fehler: {e}")
         return None
@@ -263,14 +239,7 @@ def get_all_worksheets_by_id(spreadsheet_id: str):
 @st.cache_data(ttl=300)
 def read_worksheet_text_by_id(spreadsheet_id: str, sheet_name: str) -> Optional[str]:
     """
-    Wie read_worksheet_data(), aber spreadsheetId direkt
-    
-    Args:
-        spreadsheet_id: Google Sheets ID
-        sheet_name: Name des Worksheets
-        
-    Returns:
-        Text-Repräsentation der Daten oder None
+    Wie read_worksheet_data(), aber spreadsheetId direkt (Text-Repräsentation A:Z)
     """
     try:
         service = connect_to_sheets(readonly=True)
@@ -284,19 +253,17 @@ def read_worksheet_text_by_id(spreadsheet_id: str, sheet_name: str) -> Optional[
             .get(spreadsheetId=spreadsheet_id, range=range_name)
             .execute()
         )
-
         data = result.get("values", [])
 
-        text_data = []
+        text_data: List[str] = []
         for row in data:
             if any(cell.strip() for cell in row if cell):
                 text_data.append("\t".join(row))
-
         return "\n".join(text_data)
-
     except Exception as e:
         st.error(f"❌ Fehler: {e}")
         return None
+
 
 @st.cache_data(ttl=300)
 def read_worksheet_text_range_by_id(
@@ -304,14 +271,7 @@ def read_worksheet_text_range_by_id(
 ) -> Optional[str]:
     """
     Liest nur einen kleinen Bereich eines Worksheets (für schnelle Navigator-Indizes).
-
-    Args:
-        spreadsheet_id: Google Sheets ID
-        sheet_name: Worksheet Name
-        a1_range: Bereich ohne Sheet-Name, z.B. "A1:Z40"
-
-    Returns:
-        Text-Repräsentation oder None
+    Gibt Text-Repräsentation zurück.
     """
     try:
         service = connect_to_sheets(readonly=True)
@@ -327,44 +287,19 @@ def read_worksheet_text_range_by_id(
         )
         data = result.get("values", [])
 
-        text_data = []
+        text_data: List[str] = []
         for row in data:
             if any(cell.strip() for cell in row if cell):
                 text_data.append("\t".join(row))
-
         return "\n".join(text_data)
-
-    except Exception as e:
-        st.error(f"❌ Fehler: {e}")
-        return None
-        range_name = f"'{sheet_name}'!A:Z"
-        result = (
-            service.spreadsheets()
-            .values()
-            .get(spreadsheetId=spreadsheet_id, range=range_name)
-            .execute()
-        )
-
-        data = result.get("values", [])
-
-        text_data = []
-        for row in data:
-            if any(cell.strip() for cell in row if cell):
-                text_data.append("\t".join(row))
-
-        return "\n".join(text_data)
-
     except Exception as e:
         st.error(f"❌ Fehler: {e}")
         return None
 
 
-def get_tracking_sheet_id():
+def get_tracking_sheet_id() -> Optional[str]:
     """
     Holt die Tracking Sheet ID aus secrets (mit Fallbacks)
-    
-    Returns:
-        Sheet ID oder None
     """
     if "tracking" not in st.secrets:
         return None
@@ -376,7 +311,6 @@ def get_tracking_sheet_id():
     )
 
 
-
 @st.cache_data(ttl=300)
 def read_worksheet_values_range_by_id(
     spreadsheet_id: str, sheet_name: str, a1_range: str = "B4:E7"
@@ -384,21 +318,13 @@ def read_worksheet_values_range_by_id(
     """
     Reads a small value range and returns the raw 2D values.
     Useful for fast match-header indexing without scanning large sheets.
-
-    Args:
-        spreadsheet_id: Google Sheets ID
-        sheet_name: Worksheet name
-        a1_range: Range without sheet name, e.g. "B4:E7"
-
-    Returns:
-        List of rows (each row is a list of strings) or None.
     """
     try:
         service = connect_to_sheets(readonly=True)
         if service is None:
             return None
 
-        range_name = f"\'{sheet_name}\'!{a1_range}"
+        range_name = f"'{sheet_name}'!{a1_range}"
         result = (
             service.spreadsheets()
             .values()
@@ -409,10 +335,11 @@ def read_worksheet_values_range_by_id(
     except Exception:
         return None
 
+
 @st.cache_data(ttl=300)
 def batch_get_worksheet_values_ranges_by_id(
     spreadsheet_id: str,
-    ranges: tuple[str, ...],
+    ranges: Tuple[str, ...],
 ) -> Dict[str, List[List[str]]]:
     """
     Batch reads multiple ranges from a single spreadsheet in ONE API call.
