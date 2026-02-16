@@ -386,3 +386,95 @@ class NotificationService:
                 
         except Exception as e:
             logger.error(f"Fehler bei Notification: {e}", exc_info=True)
+
+
+    async def get_matches_by_date(self, date_str):
+        """Holt Matches fuer ein bestimmtes Datum"""
+        
+        if not _secrets:
+            logger.warning("Keine Secrets")
+            return []
+        
+        try:
+            from data import list_daily_sheets_in_folder, list_match_tabs_for_day
+            
+            folder_id = _secrets.get("prematch", {}).get("folder_id")
+            if not folder_id:
+                return []
+            
+            date_to_id = await asyncio.to_thread(list_daily_sheets_in_folder, folder_id)
+            
+            if date_str not in date_to_id:
+                return []
+            
+            sheet_id = date_to_id[date_str]
+            match_tabs = await asyncio.to_thread(list_match_tabs_for_day, sheet_id)
+            
+            matches = []
+            for i, tab in enumerate(match_tabs, 1):
+                tab_name = tab.get("title", "")
+                parts = tab_name.split(" - ") if " - " in tab_name else tab_name.split(" vs ")
+                
+                matches.append({
+                    "id": i,
+                    "home": parts[0].strip() if parts else "Team A",
+                    "away": parts[1].strip() if len(parts) > 1 else "Team B",
+                    "date": date_str,
+                    "sheet_id": sheet_id,
+                    "tab": tab.get("title")
+                })
+            
+            return matches
+        except Exception as e:
+            logger.error(f"Fehler: {e}")
+            return []
+    
+    
+    async def search_all_matches(self, search_term):
+        """Sucht Matches ueber alle Dates"""
+        
+        if not _secrets:
+            return []
+        
+        try:
+            from data import list_daily_sheets_in_folder
+            
+            folder_id = _secrets.get("prematch", {}).get("folder_id")
+            if not folder_id:
+                return []
+            
+            date_to_id = await asyncio.to_thread(list_daily_sheets_in_folder, folder_id)
+            dates_sorted = sorted(date_to_id.keys(), reverse=True)[:30]
+            
+            all_matches = []
+            search_lower = search_term.lower()
+            
+            for date_str in dates_sorted:
+                matches = await self.get_matches_by_date(date_str)
+                filtered = [m for m in matches if search_lower in m.get("home", "").lower() or search_lower in m.get("away", "").lower()]
+                all_matches.extend(filtered)
+            
+            return all_matches
+        except Exception as e:
+            logger.error(f"Fehler: {e}")
+            return []
+    
+    
+    async def get_available_dates(self):
+        """Gibt alle verfuegbaren Dates zurueck"""
+        
+        if not _secrets:
+            return []
+        
+        try:
+            from data import list_daily_sheets_in_folder
+            
+            folder_id = _secrets.get("prematch", {}).get("folder_id")
+            if not folder_id:
+                return []
+            
+            date_to_id = await asyncio.to_thread(list_daily_sheets_in_folder, folder_id)
+            return sorted(date_to_id.keys(), reverse=True)
+        except Exception as e:
+            logger.error(f"Fehler: {e}")
+            return []
