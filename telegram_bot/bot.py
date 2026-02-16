@@ -42,9 +42,11 @@ error_handler
 
 # Logging konfigurieren
 
-logging.basicConfig(format=’%(asctime)s - %(name)s - %(levelname)s - %(message)s’,
-level=logging.INFO)
-logger = logging.getLogger(**name**)
+logging.basicConfig(
+       format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
+       level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 def main():
 “”“Startet den Telegram Bot”””
