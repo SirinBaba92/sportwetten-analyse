@@ -1,8 +1,3 @@
-“””
-Telegram Bot für Sportwetten-Analyse
-Hauptdatei - startet den Bot und registriert alle Handler
-“””
-
 import logging
 import sys
 from pathlib import Path
