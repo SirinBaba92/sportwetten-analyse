@@ -1,85 +1,82 @@
 """
-Telegram Bot fuer Sportwetten-Analyse
-Hauptdatei - startet den Bot und registriert alle Handler
+Konfiguration fuer den Telegram Bot
 """
 
-import logging
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-
-from telegram_bot.config import BOT_CONFIG
-from telegram_bot.handlers import (
-    start_handler, help_handler, analyze_handler, today_handler, quick_handler,
-    live_handler, search_handler, bet_handler, place_handler, positions_handler,
-    stats_handler, train_handler, model_handler, settings_handler, bankroll_handler,
-    alerts_handler, export_handler, date_handler, dates_handler, history_search_handler,
-    button_callback_handler, error_handler
-)
-
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-logger = logging.getLogger(__name__)
+import os
+from dataclasses import dataclass
+from typing import Optional
 
 
-def main():
-    """Startet den Telegram Bot"""
-    logger.info("Bot startet...")
+@dataclass
+class BotConfig:
+    """Bot-Konfiguration"""
     
-    application = Application.builder().token(BOT_CONFIG.bot_token).build()
+    # Telegram
+    bot_token: str
+    admin_chat_ids: list
     
-    # Start & Help
-    application.add_handler(CommandHandler("start", start_handler))
-    application.add_handler(CommandHandler("help", help_handler))
+    # Features
+    enable_notifications: bool = True
+    enable_ml_commands: bool = True
+    enable_betting: bool = True
     
-    # Analyse Commands
-    application.add_handler(CommandHandler("analyze", analyze_handler))
-    application.add_handler(CommandHandler("today", today_handler))
-    application.add_handler(CommandHandler("quick", quick_handler))
-    application.add_handler(CommandHandler("live", live_handler))
-    application.add_handler(CommandHandler("search", search_handler))
+    # Limits
+    max_analyses_per_day: int = 50
+    max_bet_amount: float = 100.0
     
-    # Historische Matches
-    application.add_handler(CommandHandler("date", date_handler))
-    application.add_handler(CommandHandler("dates", dates_handler))
-    application.add_handler(CommandHandler("history", history_search_handler))
-    
-    # Wett-Management
-    application.add_handler(CommandHandler("bet", bet_handler))
-    application.add_handler(CommandHandler("place", place_handler))
-    application.add_handler(CommandHandler("positions", positions_handler))
-    
-    # Performance & Stats
-    application.add_handler(CommandHandler("stats", stats_handler))
-    
-    # ML Commands
-    application.add_handler(CommandHandler("train", train_handler))
-    application.add_handler(CommandHandler("model", model_handler))
-    
-    # Settings
-    application.add_handler(CommandHandler("settings", settings_handler))
-    application.add_handler(CommandHandler("bankroll", bankroll_handler))
-    application.add_handler(CommandHandler("alerts", alerts_handler))
-    
-    # Utilities
-    application.add_handler(CommandHandler("export", export_handler))
-    
-    # Callback & Error
-    application.add_handler(CallbackQueryHandler(button_callback_handler))
-    application.add_error_handler(error_handler)
-    
-    logger.info("Bot konfiguriert - starte Polling...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    # Timeouts
+    analysis_timeout: int = 30
+    ml_training_timeout: int = 300
 
 
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        logger.info("Bot gestoppt")
-    except Exception as e:
-        logger.error(f"Fehler: {e}", exc_info=True)
-        sys.exit(1)
+def load_bot_config():
+    """
+    Laedt Bot-Konfiguration aus Environment-Variablen oder secrets
+    """
+    
+    # Versuche aus Environment-Variablen zu laden
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    admin_ids_str = os.getenv("TELEGRAM_ADMIN_CHAT_IDS", "")
+    
+    # Fallback: Versuche aus Streamlit Secrets zu laden
+    if not bot_token:
+        try:
+            import streamlit as st
+            bot_token = st.secrets.get("telegram", {}).get("bot_token")
+            admin_ids_str = st.secrets.get("telegram", {}).get("admin_chat_ids", "")
+        except Exception:
+            pass
+    
+    if not bot_token:
+        raise ValueError(
+            "TELEGRAM_BOT_TOKEN nicht gefunden!\n"
+            "Setze Environment-Variable oder fuege zu .streamlit/secrets.toml hinzu"
+        )
+    
+    # Parse Admin IDs
+    admin_ids = []
+    if admin_ids_str:
+        try:
+            admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
+        except ValueError:
+            raise ValueError("TELEGRAM_ADMIN_CHAT_IDS muss komma-separierte Integers sein")
+    
+    return BotConfig(
+        bot_token=bot_token,
+        admin_chat_ids=admin_ids
+    )
+
+
+# Globale Config-Instanz
+BOT_CONFIG = load_bot_config()
+
+
+# Helper-Funktionen
+def is_admin(chat_id):
+    """Prueft ob User Admin ist"""
+    return chat_id in BOT_CONFIG.admin_chat_ids
+
+
+def get_user_rate_limit_key(chat_id):
+    """Erstellt Rate-Limit Key fuer User"""
+    return f"rate_limit:{chat_id}"
