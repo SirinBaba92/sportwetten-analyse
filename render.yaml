@@ -2,7 +2,7 @@ services:
   - type: worker
     name: sportwetten-telegram-bot
     runtime: python
-    repo: https://github.com/BaranAlturk/Sportwetten-Analyse-v4.9
+    repo: https://github.com/SirinBaba92/sportwetten-analyse
     branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: python telegram_bot.py
