@@ -533,3 +533,15 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             keyboard = [options[i:i+2] for i in range(0, len(options), 2)]
             keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data="bank_cancel")])
             await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+# ─────────────────────────────────────────────
+# ERROR HANDLER
+# ─────────────────────────────────────────────
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(f"Fehler: {context.error}", exc_info=context.error)
+    if update and update.effective_message:
+        await update.effective_message.reply_text(
+            f"❌ Fehler: {str(context.error)[:200]}"
+        )
