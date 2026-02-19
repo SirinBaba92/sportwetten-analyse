@@ -1,5 +1,5 @@
 """
-Telegram Bot Handler - Sportwetten Analyse
+Telegram Bot Handler - Sportwetten Analyse (Mehrsprachig)
 """
 
 import logging
@@ -18,8 +18,17 @@ from telegram_bot.sheets_service import (
     read_sheet_tab,
     get_todays_sheet_id,
 )
+from telegram_bot.translations import t, get_risk_label, get_bet_type
 
 logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────
+# SPRACHE
+# ─────────────────────────────────────────────
+
+def get_lang(context: ContextTypes.DEFAULT_TYPE) -> str:
+    return context.user_data.get("lang", "de")
 
 
 # ─────────────────────────────────────────────
@@ -27,7 +36,6 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 
 def _run_analysis(spreadsheet_id: str, tab_name: str) -> Optional[dict]:
-    """Liest Sheet-Tab und führt echte Analyse durch"""
     try:
         from data.parser import DataParser
         from analysis.match_analysis import analyze_match_v47_ml
@@ -45,8 +53,9 @@ def _run_analysis(spreadsheet_id: str, tab_name: str) -> Optional[dict]:
     except Exception as e:
         logger.error(f"Analyse-Fehler für Tab '{tab_name}': {e}", exc_info=True)
         return None
-def _format_analysis(result: dict) -> str:
-    """Formatiert Analyse-Ergebnis als Telegram-Nachricht"""
+
+
+def _format_analysis(result: dict, lang: str = "de") -> str:
     info = result.get("match_info", {})
     probs = result.get("probabilities", {})
     mu = result.get("mu", {})
@@ -60,7 +69,6 @@ def _format_analysis(result: dict) -> str:
     competition = info.get("competition", "")
     kickoff = info.get("kickoff", "")
 
-    # Risiko
     _overall = ext_risk.get("overall", risk_score) if ext_risk else risk_score
     if isinstance(_overall, dict):
         overall_risk = _overall.get("score", _overall.get("value", risk_score))
@@ -71,45 +79,43 @@ def _format_analysis(result: dict) -> str:
     except Exception:
         overall_risk = int(risk_score)
 
-    risk_labels = {0: "Sehr niedrig", 1: "Gute Basis", 2: "Solide", 3: "Standard-Risiko", 4: "Vorsicht", 5: "Sehr spekulativ"}
-    empfehlung = risk_labels.get(overall_risk, "")
+    empfehlung = get_risk_label(overall_risk, lang)
     risk_emoji = ["🟢", "🟢", "🟡", "🟡", "🔴", "🔴"][min(overall_risk, 5)]
 
-    # TKI Warnung
     tki_h = tki.get("home", 0)
     tki_a = tki.get("away", 0)
     tki_note = ""
     if tki_h > 2.5:
-        tki_note += f"\n⚠️ TKI-Krise: {home} ({tki_h})"
+        tki_note += f"\n{t('tki_krise', lang, team=home, val=tki_h)}"
     if tki_a > 2.5:
-        tki_note += f"\n⚠️ TKI-Krise: {away} ({tki_a})"
+        tki_note += f"\n{t('tki_krise', lang, team=away, val=tki_a)}"
 
     text = (
         f"⚽ <b>{home} vs {away}</b>\n"
         f"🏆 {competition}  |  ⏰ {kickoff}\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🎯 <b>Prognose: {score}</b>\n\n"
-        f"📊 <b>Wahrscheinlichkeiten</b>\n"
-        f"  Heimsieg:      <b>{probs.get('home_win', 0):.1f}%</b>\n"
-        f"  Unentschieden: <b>{probs.get('draw', 0):.1f}%</b>\n"
-        f"  Auswärtssieg:  <b>{probs.get('away_win', 0):.1f}%</b>\n\n"
-        f"  Über 2.5:  <b>{probs.get('over_25', 0):.1f}%</b>\n"
-        f"  Unter 2.5: <b>{probs.get('under_25', 0):.1f}%</b>\n"
-        f"  BTTS Ja:   <b>{probs.get('btts_yes', 0):.1f}%</b>\n"
-        f"  BTTS Nein: <b>{probs.get('btts_no', 0):.1f}%</b>\n"
+        f"🎯 <b>{t('prognose', lang)}: {score}</b>\n\n"
+        f"{t('wahrscheinlichkeiten', lang)}\n"
+        f"  {t('heimsieg', lang)}:      <b>{probs.get('home_win', 0):.1f}%</b>\n"
+        f"  {t('unentschieden', lang)}: <b>{probs.get('draw', 0):.1f}%</b>\n"
+        f"  {t('auswaertssieg', lang)}: <b>{probs.get('away_win', 0):.1f}%</b>\n\n"
+        f"  {t('ueber', lang)}:  <b>{probs.get('over_25', 0):.1f}%</b>\n"
+        f"  {t('unter', lang)}: <b>{probs.get('under_25', 0):.1f}%</b>\n"
+        f"  {t('btts_ja', lang)}:   <b>{probs.get('btts_yes', 0):.1f}%</b>\n"
+        f"  {t('btts_nein', lang)}: <b>{probs.get('btts_no', 0):.1f}%</b>\n"
         f"{tki_note}\n"
-        f"🔢 μ: Heim {mu.get('home', 0):.2f} | Gast {mu.get('away', 0):.2f}\n\n"
+        f"{t('mu_label', lang, home=mu.get('home', 0), away=mu.get('away', 0))}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"{risk_emoji} <b>Risiko: {overall_risk}/5</b>  {empfehlung}\n"
+        f"{risk_emoji} <b>{t('risiko', lang)}: {overall_risk}/5</b>  {empfehlung}\n"
     )
     return text
 
 
-def _format_match_list(matches: list, title: str) -> str:
+def _format_match_list(matches: list, title: str, lang: str = "de") -> str:
     text = f"📅 <b>{title}</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
     for i, m in enumerate(matches, 1):
         text += f"{i}. {m['home']} vs {m['away']}\n"
-    text += "\n💡 Klicke eine Zahl für die Analyse"
+    text += f"\n{t('click_number', lang)}"
     return text
 
 
@@ -118,54 +124,66 @@ def _format_match_list(matches: list, title: str) -> str:
 # ─────────────────────────────────────────────
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        f"👋 <b>Sportwetten-Analyse Bot</b>\n\n"
-        f"📋 <b>Befehle:</b>\n"
-        f"/today – Heutige Matches\n"
-        f"/date 15.02.2025 – Matches an einem Datum\n"
-        f"/dates – Alle verfügbaren Daten\n"
-        f"/bet – Wett-Empfehlungen für heute\n\n"
-        f"Powered by SMART-PRECISION v4.7+ ⚽"
-    )
+    lang = get_lang(context)
     keyboard = [
         [
-            InlineKeyboardButton("📅 Heute", callback_data="cmd_today"),
-            InlineKeyboardButton("💰 Empfehlungen", callback_data="cmd_bet"),
+            InlineKeyboardButton(t("btn_today", lang), callback_data="cmd_today"),
+            InlineKeyboardButton(t("btn_bet", lang), callback_data="cmd_bet"),
         ],
-        [InlineKeyboardButton("📆 Alle Daten", callback_data="cmd_dates")],
+        [InlineKeyboardButton(t("btn_all_dates", lang), callback_data="cmd_dates")],
     ]
-    await update.message.reply_html(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_html(
+        t("start_welcome", lang),
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def lang_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = get_lang(context)
+    keyboard = [
+        [
+            InlineKeyboardButton(t("btn_de", lang), callback_data="lang_de"),
+            InlineKeyboardButton(t("btn_tr", lang), callback_data="lang_tr"),
+            InlineKeyboardButton(t("btn_en", lang), callback_data="lang_en"),
+        ]
+    ]
+    await update.message.reply_html(
+        t("lang_current", lang),
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 
 async def today_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = get_lang(context)
     msg = update.message or update.callback_query.message
-    loading = await msg.reply_html("🔄 Lade heutige Matches...")
+    loading = await msg.reply_html(t("loading_today", lang))
 
     result = get_todays_sheet_id()
     if not result:
-        await loading.edit_text("📭 Keine Matches für heute gefunden.")
+        await loading.edit_text(t("no_matches_today", lang))
         return
 
     date_str, sheet_id = result
     tabs = list_tabs_in_sheet(sheet_id)
     skip = {"overview", "übersicht", "zusammenfassung", "tracking", "results"}
-    match_tabs = [t for t in tabs if t.lower() not in skip]
+    match_tabs = [t_ for t_ in tabs if t_.lower() not in skip]
 
     if not match_tabs:
-        await loading.edit_text(f"📭 Keine Match-Tabs in Sheet {date_str} gefunden.")
+        await loading.edit_text(t("no_tabs_today", lang))
         return
 
     matches = [
-        {"home": t.split(" vs ")[0].strip() if " vs " in t else t,
-         "away": t.split(" vs ")[1].strip() if " vs " in t else "",
-         "tab": t, "sheet_id": sheet_id}
-        for t in match_tabs
+        {"home": t_.split(" vs ")[0].strip() if " vs " in t_ else t_,
+         "away": t_.split(" vs ")[1].strip() if " vs " in t_ else "",
+         "tab": t_, "sheet_id": sheet_id}
+        for t_ in match_tabs
     ]
     context.bot_data[f"matches_{date_str}"] = matches
 
     text = _format_match_list(
         [{"home": m["home"], "away": m["away"]} for m in matches],
-        f"HEUTE – {date_str}"
+        t("title_today", lang, date=date_str),
+        lang
     )
 
     keyboard = []
@@ -182,16 +200,17 @@ async def today_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def dates_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = get_lang(context)
     msg = update.message or update.callback_query.message
-    loading = await msg.reply_html("🔄 Lade verfügbare Daten...")
+    loading = await msg.reply_html(t("loading_dates", lang))
 
     dates = list_available_dates()
     if not dates:
-        await loading.edit_text("📭 Keine Daten verfügbar.")
+        await loading.edit_text(t("no_dates", lang))
         return
 
     sorted_dates = sorted(dates.keys(), reverse=True)
-    text = f"📆 <b>VERFÜGBARE DATEN</b> ({len(sorted_dates)} Tage)\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = t("title_dates", lang, count=len(sorted_dates))
 
     by_month: dict = {}
     for d in sorted_dates:
@@ -204,43 +223,45 @@ async def dates_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"  • {d}\n"
         text += "\n"
 
-    text += "💡 Nutze /date DD.MM.YYYY"
+    text += t("hint_date", lang)
     await loading.edit_text(text, parse_mode="HTML")
 
 
 async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = get_lang(context)
     if not context.args:
-        await update.message.reply_html("❌ Format: /date DD.MM.YYYY\nBeispiel: /date 15.02.2025")
+        await update.message.reply_html(t("format_date", lang))
         return
 
     date_str = context.args[0]
-    loading = await update.message.reply_html(f"🔄 Lade Matches für {date_str}...")
+    loading = await update.message.reply_html(t("loading_date", lang, date=date_str))
 
     dates = list_available_dates()
     if date_str not in dates:
-        await loading.edit_text(f"❌ Keine Daten für {date_str} gefunden.")
+        await loading.edit_text(t("no_data_date", lang, date=date_str))
         return
 
     sheet_id = dates[date_str]
     tabs = list_tabs_in_sheet(sheet_id)
     skip = {"overview", "übersicht", "zusammenfassung", "tracking", "results"}
-    match_tabs = [t for t in tabs if t.lower() not in skip]
+    match_tabs = [t_ for t_ in tabs if t_.lower() not in skip]
 
     if not match_tabs:
-        await loading.edit_text(f"📭 Keine Match-Tabs für {date_str}.")
+        await loading.edit_text(t("no_tabs_date", lang, date=date_str))
         return
 
     matches = [
-        {"home": t.split(" vs ")[0].strip() if " vs " in t else t,
-         "away": t.split(" vs ")[1].strip() if " vs " in t else "",
-         "tab": t, "sheet_id": sheet_id}
-        for t in match_tabs
+        {"home": t_.split(" vs ")[0].strip() if " vs " in t_ else t_,
+         "away": t_.split(" vs ")[1].strip() if " vs " in t_ else "",
+         "tab": t_, "sheet_id": sheet_id}
+        for t_ in match_tabs
     ]
     context.bot_data[f"matches_{date_str}"] = matches
 
     text = _format_match_list(
         [{"home": m["home"], "away": m["away"]} for m in matches],
-        f"MATCHES – {date_str}"
+        t("title_date", lang, date=date_str),
+        lang
     )
 
     keyboard = []
@@ -257,24 +278,25 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = get_lang(context)
     msg = update.message or update.callback_query.message
-    loading = await msg.reply_html("💰 Berechne Wett-Empfehlungen...")
+    loading = await msg.reply_html(t("loading_bet", lang))
 
     result = get_todays_sheet_id()
     if not result:
-        await loading.edit_text("📭 Keine heutigen Matches vorhanden.")
+        await loading.edit_text(t("no_matches_bet", lang))
         return
 
     date_str, sheet_id = result
     tabs = list_tabs_in_sheet(sheet_id)
     skip = {"overview", "übersicht", "zusammenfassung", "tracking", "results"}
-    match_tabs = [t for t in tabs if t.lower() not in skip]
+    match_tabs = [t_ for t_ in tabs if t_.lower() not in skip]
 
     if not match_tabs:
-        await loading.edit_text("📭 Keine Match-Tabs gefunden.")
+        await loading.edit_text(t("no_tabs_today", lang))
         return
 
-    await loading.edit_text(f"⏳ Analysiere {len(match_tabs)} Matches...")
+    await loading.edit_text(t("analyzing", lang, count=len(match_tabs)))
 
     recommendations = []
     for tab in match_tabs:
@@ -292,6 +314,7 @@ async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             overall_risk = int(_ov)
         except Exception:
             overall_risk = int(analysis.get("risk_score", 5))
+
         info = analysis.get("match_info", {})
 
         def implied(o):
@@ -322,28 +345,24 @@ async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "prob": our_prob,
                     "odd": odd,
                     "edge": edge,
-                    "risk": int(overall_risk),
+                    "risk": overall_risk,
                 })
 
     if not recommendations:
-        await loading.edit_text(
-            "📭 <b>Keine klaren Value Bets heute</b>\n\n"
-            "Kein ausreichendes Value (Edge < 5%) oder zu hohes Risiko.\n\n"
-            "Nutze /today für manuelle Analyse.",
-            parse_mode="HTML"
-        )
+        await loading.edit_text(t("no_value_bets", lang), parse_mode="HTML")
         return
 
     recommendations.sort(key=lambda x: x["edge"], reverse=True)
 
-    text = f"💰 <b>VALUE BETS – {date_str}</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    text = t("title_bet", lang, date=date_str)
     for i, rec in enumerate(recommendations[:5], 1):
         risk_emoji = "🟢" if rec["risk"] <= 2 else "🟡"
+        bet_label = get_bet_type(rec["bet_type"], lang)
         text += (
             f"<b>{i}. {rec['home']} vs {rec['away']}</b>\n"
-            f"   Tipp: <b>{rec['bet_type']}</b>\n"
-            f"   Quote: {rec['odd']}  |  Prob: {rec['prob']:.1f}%\n"
-            f"   Edge: +{rec['edge']:.1f}%  {risk_emoji} Risiko {rec['risk']}/5\n\n"
+            f"   {t('bet_tip', lang)}: <b>{bet_label}</b>\n"
+            f"   {t('bet_quote', lang)}: {rec['odd']}  |  {t('bet_prob', lang)}: {rec['prob']:.1f}%\n"
+            f"   {t('bet_edge', lang)}: +{rec['edge']:.1f}%  {risk_emoji} {t('bet_risk', lang)} {rec['risk']}/5\n\n"
         )
 
     await loading.edit_text(text, parse_mode="HTML")
@@ -357,6 +376,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     await query.answer()
     data = query.data
+    lang = get_lang(context)
 
     if data == "cmd_today":
         await today_handler(update, context)
@@ -364,6 +384,16 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         await bet_handler(update, context)
     elif data == "cmd_dates":
         await dates_handler(update, context)
+
+    elif data.startswith("lang_"):
+        new_lang = data.split("_")[1]
+        if new_lang in ("de", "tr", "en"):
+            context.user_data["lang"] = new_lang
+            await query.edit_message_text(
+                t("lang_changed", new_lang),
+                parse_mode="HTML"
+            )
+
     elif data.startswith("analyze_"):
         parts = data.split("_", 2)
         if len(parts) == 3:
@@ -371,26 +401,28 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             try:
                 idx = int(idx_str)
             except ValueError:
-                await query.edit_message_text("❌ Ungültige Match-ID")
+                await query.edit_message_text(t("unknown_action", lang))
                 return
 
             matches = context.bot_data.get(f"matches_{date_str}")
             if not matches or idx >= len(matches):
-                await query.edit_message_text("❌ Match nicht mehr im Cache. Nutze /today erneut.")
+                await query.edit_message_text(t("cache_miss", lang))
                 return
 
             match = matches[idx]
-            await query.edit_message_text(f"⏳ Analysiere {match['home']} vs {match['away']}...")
+            await query.edit_message_text(
+                t("analyzing_match", lang, home=match["home"], away=match["away"])
+            )
 
             result = _run_analysis(match["sheet_id"], match["tab"])
             if not result:
-                await query.edit_message_text("❌ Analyse fehlgeschlagen – Tab-Daten unvollständig?")
+                await query.edit_message_text(t("analysis_failed", lang))
                 return
 
-            text = _format_analysis(result)
+            text = _format_analysis(result, lang)
             await query.edit_message_text(text, parse_mode="HTML")
     else:
-        await query.edit_message_text("⚠️ Unbekannte Aktion")
+        await query.edit_message_text(t("unknown_action", lang))
 
 
 # ─────────────────────────────────────────────
