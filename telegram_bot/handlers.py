@@ -433,30 +433,46 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 
             text = _format_analysis(result, lang)
 
-            # Bankroll Button wenn Bankroll gesetzt
+            # Bankroll Button: alle erfüllten Kriterien als Buttons
             from telegram_bot.bankroll import get_bankroll
             keyboard = None
             if get_bankroll(query.from_user.id) > 0:
-                # Beste Option für Wette ermitteln
                 probs = result.get("probabilities", {})
                 odds = result.get("odds", {})
                 info = result.get("match_info", {})
-                match_name = f"{info.get('home', '?')[:15]} vs {info.get('away', '?')[:15]}"
+                match_name = f"{info.get('home', '?')[:12]} vs {info.get('away', '?')[:12]}"
 
-                best = max([
-                    ("Heimsieg", probs.get("home_win", 0), odds.get("1x2", [0,0,0])[0]),
-                    ("Unentschieden", probs.get("draw", 0), odds.get("1x2", [0,0,0])[1]),
-                    ("Auswärtssieg", probs.get("away_win", 0), odds.get("1x2", [0,0,0])[2]),
-                    ("Über 2.5", probs.get("over_25", 0), odds.get("ou25", [0,0])[0]),
-                    ("Unter 2.5", probs.get("under_25", 0), odds.get("ou25", [0,0])[1]),
-                    ("BTTS Ja", probs.get("btts_yes", 0), odds.get("btts", [0,0])[0]),
-                    ("BTTS Nein", probs.get("btts_no", 0), odds.get("btts", [0,0])[1]),
-                ], key=lambda x: x[1])
+                all_options = [
+                    ("Heimsieg",     probs.get("home_win", 0),  50, odds.get("1x2", [0,0,0])[0]),
+                    ("Unentschieden",probs.get("draw", 0),       50, odds.get("1x2", [0,0,0])[1]),
+                    ("Auswärtssieg", probs.get("away_win", 0),   50, odds.get("1x2", [0,0,0])[2]),
+                    ("Über 2.5",     probs.get("over_25", 0),    60, odds.get("ou25", [0,0])[0]),
+                    ("Unter 2.5",    probs.get("under_25", 0),   60, odds.get("ou25", [0,0])[1]),
+                    ("BTTS Ja",      probs.get("btts_yes", 0),   60, odds.get("btts", [0,0])[0]),
+                    ("BTTS Nein",    probs.get("btts_no", 0),    60, odds.get("btts", [0,0])[1]),
+                ]
 
-                cb = f"bet_menu_{match_name}|{best[0]}|{best[2]}|{best[1]:.1f}"
-                keyboard = InlineKeyboardMarkup([[
-                    InlineKeyboardButton("💰 Wette platzieren", callback_data=cb)
-                ]])
+                # Nur Optionen die Kriterien erfüllen (🟡)
+                qualified = [(bt, prob, odd) for bt, prob, thr, odd in all_options if prob >= thr and odd > 0]
+
+                if qualified:
+                    bet_rows = []
+                    for i, (bt, prob, odd) in enumerate(qualified):
+                        # Speichere Bet-Details in bot_data mit kurzer ID
+                        bet_key = f"bet_{query.from_user.id}_{i}"
+                        context.bot_data[bet_key] = {
+                            "match": match_name,
+                            "bet_type": bt,
+                            "odds": odd,
+                            "prob": prob,
+                        }
+                        bet_rows.append(InlineKeyboardButton(
+                            f"💰 {bt} @ {odd}",
+                            callback_data=f"bp_{query.from_user.id}_{i}"
+                        ))
+                    # 2 Buttons pro Zeile
+                    btn_rows = [bet_rows[i:i+2] for i in range(0, len(bet_rows), 2)]
+                    keyboard = InlineKeyboardMarkup(btn_rows)
 
             await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
     elif data == "bank_open":
@@ -500,39 +516,88 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 ),
                 parse_mode="HTML"
             )
-    elif data.startswith("bet_menu_"):
-        raw = data[len("bet_menu_"):]
-        parts = raw.split("|")
-        if len(parts) == 4:
-            match, bet_type, odds, prob = parts
-            from telegram_bot.bankroll import get_bankroll, kelly_stake
-            bankroll = get_bankroll(query.from_user.id)
-            kelly = kelly_stake(float(prob), float(odds), bankroll)
-            text = (
-                "💰 <b>Wette platzieren</b>\n\n"
-                f"Match: <b>{match}</b>\n"
-                f"Tipp: <b>{bet_type}</b> @ {odds}\n"
-                f"Wahrsch.: <b>{float(prob):.1f}%</b>\n\n"
-                f"💼 Bankroll: <b>{bankroll:.2f} €</b>\n"
-                f"📐 Kelly-Empfehlung: <b>{kelly:.2f} €</b>\n\n"
-                "Wähle deinen Einsatz:"
-            )
-            options = []
-            for pct in [1, 2, 5]:
-                stake = round(bankroll * pct / 100, 2)
-                if stake > 0:
-                    options.append(InlineKeyboardButton(
-                        f"{pct}% ({stake:.2f}€)",
-                        callback_data=f"bet_place_{match}|{bet_type}|{odds}|{stake}|{prob}"
-                    ))
-            if kelly > 0:
+    elif data.startswith("bp_"):
+        # bp_{user_id}_{index} - Bet auswählen aus bot_data
+        parts = data.split("_")
+        uid = int(parts[1])
+        idx = int(parts[2])
+        bet_key = f"bet_{uid}_{idx}"
+        bet_info = context.bot_data.get(bet_key)
+        if not bet_info:
+            await query.answer("❌ Daten abgelaufen. Analyse erneut starten.", show_alert=True)
+            return
+        from telegram_bot.bankroll import get_bankroll, kelly_stake
+        bankroll = get_bankroll(uid)
+        kelly = kelly_stake(bet_info["prob"], bet_info["odds"], bankroll)
+        text = (
+            "💰 <b>Wette platzieren</b>\n\n"
+            f"Match: <b>{bet_info['match']}</b>\n"
+            f"Tipp: <b>{bet_info['bet_type']}</b> @ {bet_info['odds']}\n"
+            f"Wahrsch.: <b>{bet_info['prob']:.1f}%</b>\n\n"
+            f"💼 Bankroll: <b>{bankroll:.2f} €</b>\n"
+            f"📐 Kelly-Empfehlung: <b>{kelly:.2f} €</b>\n\n"
+            "Wähle deinen Einsatz:"
+        )
+        options = []
+        for pct in [1, 2, 5]:
+            stake = round(bankroll * pct / 100, 2)
+            if stake > 0:
+                # Speichere Stake auch in bot_data
+                sk = f"bps_{uid}_{idx}_{pct}"
+                context.bot_data[sk] = {**bet_info, "stake": stake}
                 options.append(InlineKeyboardButton(
-                    f"Kelly ({kelly:.2f}€)",
-                    callback_data=f"bet_place_{match}|{bet_type}|{odds}|{kelly}|{prob}"
+                    f"{pct}% ({stake:.2f}€)",
+                    callback_data=f"bps_{uid}_{idx}_{pct}"
                 ))
-            keyboard = [options[i:i+2] for i in range(0, len(options), 2)]
-            keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data="bank_cancel")])
-            await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+        if kelly > 0:
+            sk = f"bps_{uid}_{idx}_k"
+            context.bot_data[sk] = {**bet_info, "stake": kelly}
+            options.append(InlineKeyboardButton(
+                f"Kelly ({kelly:.2f}€)",
+                callback_data=f"bps_{uid}_{idx}_k"
+            ))
+        keyboard = [options[i:i+2] for i in range(0, len(options), 2)]
+        keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data="bank_cancel")])
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("bps_"):
+        # bps_{uid}_{idx}_{pct} - Einsatz bestätigen
+        bet_info = context.bot_data.get(data)
+        if not bet_info:
+            await query.answer("❌ Daten abgelaufen. Analyse erneut starten.", show_alert=True)
+            return
+        from telegram_bot.bankroll import place_bet
+        result = place_bet(
+            query.from_user.id,
+            bet_info["match"],
+            bet_info["bet_type"],
+            float(bet_info["odds"]),
+            float(bet_info["stake"]),
+            float(bet_info["prob"])
+        )
+        if "error" in result:
+            errors = {
+                "no_bankroll": "Keine Bankroll gesetzt.",
+                "insufficient_funds": f"Nicht genug Guthaben.",
+                "invalid_stake": "Ungültiger Einsatz.",
+            }
+            await query.answer(errors.get(result["error"], "Fehler"), show_alert=True)
+        else:
+            bet = result["bet"]
+            await query.edit_message_text(
+                "✅ <b>Wette platziert!</b>\n\n"
+                f"Match: <b>{bet['match']}</b>\n"
+                f"Tipp: <b>{bet['bet_type']}</b> @ {bet['odds']}\n"
+                f"Einsatz: <b>{bet['stake']:.2f} €</b>\n"
+                f"Möglicher Gewinn: <b>{bet['potential_win']:.2f} €</b>\n\n"
+                f"💼 Bankroll: <b>{result['bankroll']:.2f} €</b>\n\n"
+                "Nutze /open um offene Wetten zu verwalten.",
+                parse_mode="HTML"
+            )
+
+
+    else:
+        await query.edit_message_text(t("unknown_action", lang))
 
 
 # ─────────────────────────────────────────────
