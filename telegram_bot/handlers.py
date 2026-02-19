@@ -492,42 +492,27 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             emoji = "✅" if won else "❌"
             profit_str = f"+{result['profit']:.2f}" if result['profit'] >= 0 else f"{result['profit']:.2f}"
             await query.edit_message_text(
-                f"{emoji} <b>Wette abgeschlossen!</b>
-
-"
-                f"Ergebnis: <b>{'Gewonnen' if won else 'Verloren'}</b>
-"
-                f"P&L: <b>{profit_str} €</b>
-"
-                f"💼 Bankroll: <b>{result['bankroll']:.2f} €</b>",
+                "{} <b>Wette abgeschlossen!</b>\n\nErgebnis: <b>{}</b>\nP&L: <b>{} €</b>\n💼 Bankroll: <b>{:.2f} €</b>".format(
+                    emoji,
+                    "Gewonnen" if won else "Verloren",
+                    profit_str,
+                    result["bankroll"]
+                ),
                 parse_mode="HTML"
             )
-
-    elif data.startswith("bet_menu_"):
-        raw = data[len("bet_menu_"):]
-        parts = raw.split("|")
         if len(parts) == 4:
             match, bet_type, odds, prob = parts
             from telegram_bot.bankroll import get_bankroll, kelly_stake
             bankroll = get_bankroll(query.from_user.id)
             kelly = kelly_stake(float(prob), float(odds), bankroll)
             text = (
-                f"💰 <b>Wette platzieren</b>
-
-"
-                f"Match: <b>{match}</b>
-"
-                f"Tipp: <b>{bet_type}</b> @ {odds}
-"
-                f"Wahrsch.: <b>{float(prob):.1f}%</b>
-
-"
-                f"💼 Bankroll: <b>{bankroll:.2f} €</b>
-"
-                f"📐 Kelly-Empfehlung: <b>{kelly:.2f} €</b>
-
-"
-                f"Wähle deinen Einsatz:"
+                "💰 <b>Wette platzieren</b>\n\n"
+                f"Match: <b>{match}</b>\n"
+                f"Tipp: <b>{bet_type}</b> @ {odds}\n"
+                f"Wahrsch.: <b>{float(prob):.1f}%</b>\n\n"
+                f"💼 Bankroll: <b>{bankroll:.2f} €</b>\n"
+                f"📐 Kelly-Empfehlung: <b>{kelly:.2f} €</b>\n\n"
+                "Wähle deinen Einsatz:"
             )
             options = []
             for pct in [1, 2, 5]:
@@ -566,22 +551,13 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             else:
                 bet = result["bet"]
                 await query.edit_message_text(
-                    f"✅ <b>Wette platziert!</b>
-
-"
-                    f"Match: <b>{bet['match']}</b>
-"
-                    f"Tipp: <b>{bet['bet_type']}</b> @ {bet['odds']}
-"
-                    f"Einsatz: <b>{bet['stake']:.2f} €</b>
-"
-                    f"Möglicher Gewinn: <b>{bet['potential_win']:.2f} €</b>
-
-"
-                    f"💼 Bankroll: <b>{result['bankroll']:.2f} €</b>
-
-"
-                    f"Nutze /open um offene Wetten zu verwalten.",
+                    "✅ <b>Wette platziert!</b>\n\n"
+                    f"Match: <b>{bet["match"]}</b>\n"
+                    f"Tipp: <b>{bet["bet_type"]}</b> @ {bet["odds"]}\n"
+                    f"Einsatz: <b>{bet["stake"]:.2f} €</b>\n"
+                    f"Möglicher Gewinn: <b>{bet["potential_win"]:.2f} €</b>\n\n"
+                    f"💼 Bankroll: <b>{result["bankroll"]:.2f} €</b>\n\n"
+                    "Nutze /open um offene Wetten zu verwalten.",
                     parse_mode="HTML"
                 )
     else:
