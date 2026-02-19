@@ -53,7 +53,6 @@ def _format_analysis(result: dict) -> str:
     risk_score = result.get("risk_score", 0)
     ext_risk = result.get("extended_risk", {})
     score = result.get("predicted_score", "?-?")
-    odds = result.get("odds", {})
     tki = result.get("tki", {})
 
     home = info.get("home", info.get("home_team", "Heim"))
@@ -61,8 +60,7 @@ def _format_analysis(result: dict) -> str:
     competition = info.get("competition", "")
     kickoff = info.get("kickoff", "")
 
-    # Risiko aus extended_risk["overall"] oder fallback auf risk_score
-    # overall kann ein dict oder int sein je nach extended_risk Struktur
+    # Risiko
     _overall = ext_risk.get("overall", risk_score) if ext_risk else risk_score
     if isinstance(_overall, dict):
         overall_risk = _overall.get("score", _overall.get("value", risk_score))
@@ -72,47 +70,10 @@ def _format_analysis(result: dict) -> str:
         overall_risk = int(overall_risk)
     except Exception:
         overall_risk = int(risk_score)
-    empfehlung = ""
 
-    # Empfehlung aus calculate_risk_score Struktur (simpler risk_score)
-    risk_labels = {
-        0: "Sehr niedrig",
-        1: "Gute Basis für Wetten",
-        2: "Solide Wettmöglichkeit",
-        3: "Standard-Risiko",
-        4: "Vorsicht bei Wetten",
-        5: "Sehr spekulativ",
-    }
-    empfehlung = risk_labels.get(int(overall_risk), "")
-
-    risk_emoji = ["🟢", "🟢", "🟡", "🟡", "🔴", "🔴"][min(int(overall_risk), 5)]
-
-    # Value Bet Check
-    def implied_prob(odd):
-        try:
-            return 1 / float(odd) * 100
-        except Exception:
-            return 0
-
-    odds_1x2 = odds.get("1x2", (0, 0, 0))
-    odds_ou = odds.get("ou25", (0, 0))
-    odds_btts = odds.get("btts", (0, 0))
-
-    value_hints = []
-    checks = [
-        ("Heimsieg", probs.get("home_win", 0), implied_prob(odds_1x2[0]), odds_1x2[0]),
-        ("Unentschieden", probs.get("draw", 0), implied_prob(odds_1x2[1]), odds_1x2[1]),
-        ("Auswärtssieg", probs.get("away_win", 0), implied_prob(odds_1x2[2]), odds_1x2[2]),
-        ("Über 2.5", probs.get("over_25", 0), implied_prob(odds_ou[0]), odds_ou[0]),
-        ("Unter 2.5", probs.get("under_25", 0), implied_prob(odds_ou[1]), odds_ou[1]),
-        ("BTTS Ja", probs.get("btts_yes", 0), implied_prob(odds_btts[0]), odds_btts[0]),
-        ("BTTS Nein", probs.get("btts_no", 0), implied_prob(odds_btts[1]), odds_btts[1]),
-    ]
-    for label, our_prob, imp_prob, odd in checks:
-        if odd and our_prob > imp_prob + 5:
-            value_hints.append(f"✅ VALUE: {label} @ {odd}")
-
-    value_section = "\n".join(value_hints) if value_hints else "⚪ Kein klarer Value erkannt"
+    risk_labels = {0: "Sehr niedrig", 1: "Gute Basis", 2: "Solide", 3: "Standard-Risiko", 4: "Vorsicht", 5: "Sehr spekulativ"}
+    empfehlung = risk_labels.get(overall_risk, "")
+    risk_emoji = ["🟢", "🟢", "🟡", "🟡", "🔴", "🔴"][min(overall_risk, 5)]
 
     # TKI Warnung
     tki_h = tki.get("home", 0)
@@ -139,9 +100,7 @@ def _format_analysis(result: dict) -> str:
         f"{tki_note}\n"
         f"🔢 μ: Heim {mu.get('home', 0):.2f} | Gast {mu.get('away', 0):.2f}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💰 <b>Value Bets</b>\n"
-        f"{value_section}\n\n"
-        f"{risk_emoji} <b>Risiko: {int(overall_risk)}/5</b>  {empfehlung}\n"
+        f"{risk_emoji} <b>Risiko: {overall_risk}/5</b>  {empfehlung}\n"
     )
     return text
 
