@@ -1,11 +1,11 @@
-# Für den Bot
-python-telegram-bot==20.7
-requests==2.31.0
-flask==3.0.0
-gunicorn==21.2.0
+streamlit
 plotly
+requests
 
-# Für Google Sheets (falls der Bot direkt darauf zugreift)
+# Telegram Bot
+python-telegram-bot[job-queue]==20.7
+
+# Google Sheets / Drive
 google-auth>=2.23.0
 google-auth-oauthlib>=1.0.0
 google-auth-httplib2>=0.1.0
