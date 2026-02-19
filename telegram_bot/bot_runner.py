@@ -32,11 +32,16 @@ async def _poll(token: str):
     from telegram_bot.handlers import (
         start_handler, lang_handler, today_handler, dates_handler,
         date_handler, bet_handler, button_callback_handler, error_handler,
+        bankroll_handler, setbank_handler, open_bets_handler, stats_handler,
     )
 
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("lang", lang_handler))
+    app.add_handler(CommandHandler("bankroll", bankroll_handler))
+    app.add_handler(CommandHandler("setbank", setbank_handler))
+    app.add_handler(CommandHandler("open", open_bets_handler))
+    app.add_handler(CommandHandler("stats", stats_handler))
     app.add_handler(CommandHandler("today", today_handler))
     app.add_handler(CommandHandler("dates", dates_handler))
     app.add_handler(CommandHandler("date", date_handler))
