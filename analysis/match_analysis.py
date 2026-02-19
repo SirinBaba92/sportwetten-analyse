@@ -12,6 +12,12 @@ from analysis.risk_scoring import (
     calculate_extended_risk_scores_strict,
 )
 
+def _safe_get_session(key):
+    """Gibt None zurück wenn kein Streamlit-Kontext vorhanden"""
+    try:
+        return st.session_state.get(key)
+    except Exception:
+        return None
 
 def analyze_match_v47_ml(match: MatchData) -> Dict:
     """
@@ -172,11 +178,13 @@ def analyze_match_v47_ml(match: MatchData) -> Dict:
     # ML-Korrektur (Phase 3) - NACH allen v4.9 Anpassungen
     ml_info = {"applied": False, "reason": "ML-Modell nicht initialisiert"}
 
+    # NEU:
+    _pos_model = _safe_get_session("position_ml_model")
     if (
-        st.session_state.position_ml_model
-        and st.session_state.position_ml_model.is_trained
+        _pos_model
+        and _pos_model.is_trained
     ):
-        ml_correction = st.session_state.position_ml_model.predict_correction(
+        ml_correction = _pos_model.predict_correction(
             home_team=match.home_team, away_team=match.away_team, match_date=match.date
         )
 
