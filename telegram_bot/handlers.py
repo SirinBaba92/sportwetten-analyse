@@ -58,8 +58,10 @@ def _format_analysis(result: dict) -> str:
     info = result.get("match_info", {})
     probs = result.get("probabilities", {})
     mu = result.get("mu", {})
-    risk = result.get("risk_score", 0)
     ext_risk = result.get("extended_risk", {})
+    risk = result.get("risk_score", 0)
+    if isinstance(risk, dict):
+        risk = 0
     score = result.get("predicted_score", "?-?")
     odds = result.get("odds", {})
     tki = result.get("tki", {})
@@ -316,7 +318,10 @@ async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         probs = analysis.get("probabilities", {})
         odds = analysis.get("odds", {})
-        risk = analysis.get("risk_score", 5)
+        ext_risk_data = analysis.get("extended_risk", {})
+        risk = ext_risk_data.get("overall", analysis.get("risk_score", 5))
+        if isinstance(risk, dict):
+            risk = 5
         info = analysis.get("match_info", {})
 
         def implied(o):
