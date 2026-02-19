@@ -552,11 +552,11 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 bet = result["bet"]
                 await query.edit_message_text(
                     "✅ <b>Wette platziert!</b>\n\n"
-                    f"Match: <b>{bet["match"]}</b>\n"
-                    f"Tipp: <b>{bet["bet_type"]}</b> @ {bet["odds"]}\n"
-                    f"Einsatz: <b>{bet["stake"]:.2f} €</b>\n"
-                    f"Möglicher Gewinn: <b>{bet["potential_win"]:.2f} €</b>\n\n"
-                    f"💼 Bankroll: <b>{result["bankroll"]:.2f} €</b>\n\n"
+                    f"Match: <b>{bet['match']}</b>\n"
+                    f"Tipp: <b>{bet['bet_type']}</b> @ {bet['odds']}\n"
+                    f"Einsatz: <b>{bet['stake']:.2f} €</b>\n"
+                    f"Möglicher Gewinn: <b>{bet['potential_win']:.2f} €</b>\n\n"
+                    f"💼 Bankroll: <b>{result['bankroll']:.2f} €</b>\n\n"
                     "Nutze /open um offene Wetten zu verwalten.",
                     parse_mode="HTML"
                 )
