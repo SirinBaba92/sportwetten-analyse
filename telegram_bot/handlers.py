@@ -23,7 +23,6 @@ from telegram_bot.sheets_service import (
 
 logger = logging.getLogger(__name__)
 
-# Folder ID aus Umgebungsvariable
 
 
 # ─────────────────────────────────────────────
@@ -162,8 +161,6 @@ async def today_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.callback_query.message
     loading = await msg.reply_html("🔄 Lade heutige Matches...")
 
-    if not FOLDER_ID:
-        await loading.edit_text("❌ GOOGLE_DRIVE_FOLDER_ID nicht konfiguriert.")
         return
 
     result = get_todays_sheet_id()
@@ -213,8 +210,6 @@ async def dates_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.callback_query.message
     loading = await msg.reply_html("🔄 Lade verfügbare Daten...")
 
-    if not FOLDER_ID:
-        await loading.edit_text("❌ GOOGLE_DRIVE_FOLDER_ID nicht konfiguriert.")
         return
 
     dates = list_available_dates()
@@ -251,8 +246,6 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     date_str = context.args[0]
     loading = await update.message.reply_html(f"🔄 Lade Matches für {date_str}...")
 
-    if not FOLDER_ID:
-        await loading.edit_text("❌ GOOGLE_DRIVE_FOLDER_ID nicht konfiguriert.")
         return
 
     dates = list_available_dates()
@@ -300,8 +293,6 @@ async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.callback_query.message
     loading = await msg.reply_html("💰 Berechne Wett-Empfehlungen...")
 
-    if not FOLDER_ID:
-        await loading.edit_text("❌ GOOGLE_DRIVE_FOLDER_ID nicht konfiguriert.")
         return
 
     result = get_todays_sheet_id()
