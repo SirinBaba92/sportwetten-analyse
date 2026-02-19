@@ -428,7 +428,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update and update.effective_message:
         await update.effective_message.reply_text(
             f"❌ Fehler: {str(context.error)[:200]}"
-        )"""
+        )
+"""
 Telegram Bot Handler - Sportwetten Analyse
 """
 
