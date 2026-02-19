@@ -90,19 +90,31 @@ def _format_analysis(result: dict, lang: str = "de") -> str:
     if tki_a > 2.5:
         tki_note += f"\n{t('tki_krise', lang, team=away, val=tki_a)}"
 
+    # Gelbe Punkte bei erfüllten Kriterien (identisch mit Streamlit)
+    def dot(prob, threshold):
+        return "🟡 " if prob >= threshold else "     "
+
+    hw = probs.get("home_win", 0)
+    dr = probs.get("draw", 0)
+    aw = probs.get("away_win", 0)
+    ov = probs.get("over_25", 0)
+    un = probs.get("under_25", 0)
+    by = probs.get("btts_yes", 0)
+    bn = probs.get("btts_no", 0)
+
     text = (
         f"⚽ <b>{home} vs {away}</b>\n"
         f"🏆 {competition}  |  ⏰ {kickoff}\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🎯 <b>{t('prognose', lang)}: {score}</b>\n\n"
         f"{t('wahrscheinlichkeiten', lang)}\n"
-        f"  {t('heimsieg', lang)}:      <b>{probs.get('home_win', 0):.1f}%</b>\n"
-        f"  {t('unentschieden', lang)}: <b>{probs.get('draw', 0):.1f}%</b>\n"
-        f"  {t('auswaertssieg', lang)}: <b>{probs.get('away_win', 0):.1f}%</b>\n\n"
-        f"  {t('ueber', lang)}:  <b>{probs.get('over_25', 0):.1f}%</b>\n"
-        f"  {t('unter', lang)}: <b>{probs.get('under_25', 0):.1f}%</b>\n"
-        f"  {t('btts_ja', lang)}:   <b>{probs.get('btts_yes', 0):.1f}%</b>\n"
-        f"  {t('btts_nein', lang)}: <b>{probs.get('btts_no', 0):.1f}%</b>\n"
+        f"  {dot(hw,50)}{t('heimsieg', lang)}:      <b>{hw:.1f}%</b>\n"
+        f"  {dot(dr,50)}{t('unentschieden', lang)}: <b>{dr:.1f}%</b>\n"
+        f"  {dot(aw,50)}{t('auswaertssieg', lang)}: <b>{aw:.1f}%</b>\n\n"
+        f"  {dot(ov,60)}{t('ueber', lang)}:  <b>{ov:.1f}%</b>\n"
+        f"  {dot(un,60)}{t('unter', lang)}: <b>{un:.1f}%</b>\n"
+        f"  {dot(by,60)}{t('btts_ja', lang)}:   <b>{by:.1f}%</b>\n"
+        f"  {dot(bn,60)}{t('btts_nein', lang)}: <b>{bn:.1f}%</b>\n"
         f"{tki_note}\n"
         f"{t('mu_label', lang, home=mu.get('home', 0), away=mu.get('away', 0))}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
