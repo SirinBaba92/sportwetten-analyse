@@ -32,8 +32,13 @@ logger = logging.getLogger(__name__)
 def _run_analysis(spreadsheet_id: str, tab_name: str) -> Optional[dict]:
     """Liest Sheet-Tab und führt echte Analyse durch"""
     try:
+        import streamlit as st
         from data.parser import DataParser
         from analysis.match_analysis import analyze_match_v47_ml
+
+        # ML-Modell im Bot-Thread nicht verfügbar → auf None setzen
+        if not hasattr(st.session_state, "position_ml_model"):
+            st.session_state["position_ml_model"] = None
 
         raw_text = read_sheet_tab(spreadsheet_id, tab_name)
         if not raw_text.strip():
