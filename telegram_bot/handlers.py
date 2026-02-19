@@ -545,3 +545,136 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text(
             f"❌ Fehler: {str(context.error)[:200]}"
         )
+
+
+# ─────────────────────────────────────────────
+# BANKROLL HANDLERS
+# ─────────────────────────────────────────────
+
+async def bankroll_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    from telegram_bot.bankroll import get_user_data, get_stats
+    data = get_user_data(user_id)
+    stats = get_stats(user_id)
+
+    if data["initial"] == 0:
+        await update.message.reply_html(
+            "💼 <b>Demo Bankroll</b>\n\n"
+            "Noch kein Startkapital gesetzt.\n\n"
+            "Nutze /setbank [Betrag] um zu starten.\n"
+            "Beispiel: /setbank 1000"
+        )
+        return
+
+    profit = data["bankroll"] - data["initial"]
+    profit_emoji = "📈" if profit >= 0 else "📉"
+    profit_str = f"+{profit:.2f}" if profit >= 0 else f"{profit:.2f}"
+
+    text = (
+        f"💼 <b>Demo Bankroll</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💰 Aktuell:     <b>{data['bankroll']:.2f} €</b>\n"
+        f"🏦 Start:       <b>{data['initial']:.2f} €</b>\n"
+        f"{profit_emoji} Gesamt P&L: <b>{profit_str} €</b>\n\n"
+        f"📊 <b>Statistiken</b>\n"
+        f"  Wetten:    {stats['total']} ({stats['won']}W / {stats['lost']}L)\n"
+        f"  Win Rate:  {stats['win_rate']:.1f}%\n"
+        f"  ROI:       {stats['roi']:+.1f}%\n"
+        f"  Offen:     {stats['open']} Wetten\n"
+    )
+    keyboard = [
+        [
+            InlineKeyboardButton("📋 Offene Wetten", callback_data="bank_open"),
+            InlineKeyboardButton("📈 Details", callback_data="bank_stats"),
+        ],
+        [InlineKeyboardButton("🔄 Reset", callback_data="bank_reset_confirm")],
+    ]
+    await update.message.reply_html(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def setbank_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not context.args:
+        await update.message.reply_html("❌ Format: /setbank [Betrag]\nBeispiel: /setbank 1000")
+        return
+    try:
+        amount = float(context.args[0].replace(",", "."))
+        if amount <= 0:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_html("❌ Ungültiger Betrag. Beispiel: /setbank 1000")
+        return
+
+    from telegram_bot.bankroll import set_bankroll
+    set_bankroll(user_id, amount)
+    await update.message.reply_html(
+        f"✅ <b>Bankroll gesetzt!</b>\n\n"
+        f"💰 Startkapital: <b>{amount:.2f} €</b>\n\n"
+        f"Nach einer Analyse kannst du direkt Wetten platzieren.\n"
+        f"Nutze /bankroll für die Übersicht."
+    )
+
+
+async def open_bets_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    from telegram_bot.bankroll import get_open_bets, get_bankroll
+    bets = get_open_bets(user_id)
+    bankroll = get_bankroll(user_id)
+    msg = update.message or update.callback_query.message
+
+    if not bets:
+        await msg.reply_html(
+            f"📋 <b>Offene Wetten</b>\n\nKeine offenen Wetten.\n\n"
+            f"💰 Verfügbar: <b>{bankroll:.2f} €</b>"
+        )
+        return
+
+    text = f"📋 <b>Offene Wetten ({len(bets)})</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    keyboard = []
+    for bet in bets:
+        text += (
+            f"<b>#{bet['id']} {bet['match']}</b>\n"
+            f"  {bet['bet_type']} @ {bet['odds']}\n"
+            f"  Einsatz: {bet['stake']:.2f} € → Gewinn: {bet['potential_win']:.2f} €\n"
+            f"  📅 {bet['date']}\n\n"
+        )
+        keyboard.append([
+            InlineKeyboardButton(f"✅ #{bet['id']} Gewonnen", callback_data=f"close_{bet['id']}_won"),
+            InlineKeyboardButton(f"❌ #{bet['id']} Verloren", callback_data=f"close_{bet['id']}_lost"),
+        ])
+    text += f"💰 Verfügbar: <b>{bankroll:.2f} €</b>"
+    await msg.reply_html(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    from telegram_bot.bankroll import get_stats
+    stats = get_stats(user_id)
+    msg = update.message or update.callback_query.message
+
+    if stats["initial"] == 0 or stats["total"] == 0:
+        await msg.reply_html("📈 <b>Statistiken</b>\n\nNoch keine abgeschlossenen Wetten.")
+        return
+
+    roi_emoji = "📈" if stats["roi"] >= 0 else "📉"
+    profit_str = f"+{stats['total_profit']:.2f}" if stats["total_profit"] >= 0 else f"{stats['total_profit']:.2f}"
+
+    text = (
+        f"📈 <b>Statistiken</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🎯 Wetten gesamt: <b>{stats['total']}</b>\n"
+        f"✅ Gewonnen:      <b>{stats['won']}</b>\n"
+        f"❌ Verloren:      <b>{stats['lost']}</b>\n"
+        f"🎯 Win Rate:      <b>{stats['win_rate']:.1f}%</b>\n\n"
+        f"💶 Einsatz gesamt: <b>{stats['total_staked']:.2f} €</b>\n"
+        f"💰 Profit:         <b>{profit_str} €</b>\n"
+        f"{roi_emoji} ROI:            <b>{stats['roi']:+.1f}%</b>\n\n"
+        f"🏦 Start:   <b>{stats['initial']:.2f} €</b>\n"
+        f"💼 Aktuell: <b>{stats['bankroll']:.2f} €</b>\n"
+    )
+    if stats.get("best_win"):
+        text += f"\n🏆 Bester Gewinn: <b>+{stats['best_win']['profit']:.2f} €</b> ({stats['best_win']['match']})\n"
+    if stats.get("worst_loss"):
+        text += f"💔 Größter Verlust: <b>{stats['worst_loss']['profit']:.2f} €</b> ({stats['worst_loss']['match']})\n"
+
+    await msg.reply_html(text)
