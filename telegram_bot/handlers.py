@@ -56,8 +56,8 @@ def _format_analysis(result: dict) -> str:
     odds = result.get("odds", {})
     tki = result.get("tki", {})
 
-    home = info.get("home_team", "Heim")
-    away = info.get("away_team", "Gast")
+    home = info.get("home", info.get("home_team", "Heim"))
+    away = info.get("away", info.get("away_team", "Gast"))
     competition = info.get("competition", "")
     kickoff = info.get("kickoff", "")
 
@@ -357,8 +357,8 @@ async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             edge = our_prob - imp_prob
             if edge >= 5 and overall_risk <= 3 and odd:
                 recommendations.append({
-                    "home": info.get("home_team", "?"),
-                    "away": info.get("away_team", "?"),
+                    "home": info.get("home", info.get("home_team", "?")),
+                    "away": info.get("away", info.get("away_team", "?")),
                     "bet_type": bet_type,
                     "prob": our_prob,
                     "odd": odd,
