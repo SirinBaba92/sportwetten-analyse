@@ -1,9 +1,6 @@
 """
 Bot Runner – startet den Telegram Bot als Background-Thread in Streamlit.
-
-Aufruf in app.py (einmalig beim Start):
-    from telegram_bot.bot_runner import start_bot_in_background
-    start_bot_in_background()
+Verwendet asyncio direkt (ohne Signal-Handler) für Thread-Kompatibilität.
 """
 
 import threading
@@ -13,15 +10,22 @@ import os
 
 logger = logging.getLogger(__name__)
 
-_bot_thread: threading.Thread | None = None
+_bot_thread = None
+
+
+async def _start_polling(app):
+    """Startet Polling ohne Signal-Handler (Thread-kompatibel)"""
+    from telegram import Update
+    await app.initialize()
+    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+    await app.start()
+    logger.info("Telegram Bot Polling läuft...")
+    while True:
+        await asyncio.sleep(3600)
 
 
 def _run_bot():
     """Läuft im eigenen Thread mit eigenem Event Loop"""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    from telegram import Update
     from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
     from telegram_bot.config import BOT_CONFIG
@@ -39,6 +43,9 @@ def _run_bot():
         logger.warning("TELEGRAM_BOT_TOKEN nicht gesetzt – Bot wird nicht gestartet.")
         return
 
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     app = Application.builder().token(BOT_CONFIG.bot_token).build()
 
     app.add_handler(CommandHandler("start", start_handler))
@@ -49,8 +56,12 @@ def _run_bot():
     app.add_handler(CallbackQueryHandler(button_callback_handler))
     app.add_error_handler(error_handler)
 
-    logger.info("Telegram Bot gestartet (Background-Thread)")
-    app.run_polling(allowed_updates=Update.ALL_TYPES, close_loop=False)
+    try:
+        loop.run_until_complete(_start_polling(app))
+    except Exception as e:
+        logger.error(f"Bot Fehler: {e}", exc_info=True)
+    finally:
+        loop.close()
 
 
 def start_bot_in_background():
@@ -60,11 +71,17 @@ def start_bot_in_background():
     """
     global _bot_thread
 
-    # Kein Token → nichts tun
+    # Token aus Env oder Streamlit Secrets laden
     if not os.getenv("TELEGRAM_BOT_TOKEN"):
-        return
+        try:
+            import streamlit as st
+            token = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
+            if not token:
+                return
+            os.environ["TELEGRAM_BOT_TOKEN"] = token
+        except Exception:
+            return
 
-    # Bereits gestartet → nichts tun
     if _bot_thread is not None and _bot_thread.is_alive():
         return
 
