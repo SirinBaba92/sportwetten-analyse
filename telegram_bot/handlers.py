@@ -10,10 +10,8 @@ from typing import Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-# Stelle sicher dass App-Root im Python-Pfad ist
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from telegram_bot.config import is_admin
 from telegram_bot.sheets_service import (
     list_available_dates,
     list_tabs_in_sheet,
@@ -24,7 +22,6 @@ from telegram_bot.sheets_service import (
 logger = logging.getLogger(__name__)
 
 
-
 # ─────────────────────────────────────────────
 # HILFSFUNKTIONEN
 # ─────────────────────────────────────────────
@@ -32,13 +29,9 @@ logger = logging.getLogger(__name__)
 def _run_analysis(spreadsheet_id: str, tab_name: str) -> Optional[dict]:
     """Liest Sheet-Tab und führt echte Analyse durch"""
     try:
-        import streamlit as st
         from data.parser import DataParser
         from analysis.match_analysis import analyze_match_v47_ml
-
-        # ML-Modell im Bot-Thread nicht verfügbar → auf None setzen
-        if not hasattr(st.session_state, "position_ml_model"):
-            st.session_state["position_ml_model"] = None
+        from app import choose_consistent_predicted_score
 
         raw_text = read_sheet_tab(spreadsheet_id, tab_name)
         if not raw_text.strip():
@@ -47,6 +40,7 @@ def _run_analysis(spreadsheet_id: str, tab_name: str) -> Optional[dict]:
         parser = DataParser()
         match_data = parser.parse(raw_text)
         result = analyze_match_v47_ml(match_data)
+        result = choose_consistent_predicted_score(result)
         return result
     except Exception as e:
         logger.error(f"Analyse-Fehler für Tab '{tab_name}': {e}", exc_info=True)
@@ -58,10 +52,8 @@ def _format_analysis(result: dict) -> str:
     info = result.get("match_info", {})
     probs = result.get("probabilities", {})
     mu = result.get("mu", {})
+    risk_score = result.get("risk_score", 0)
     ext_risk = result.get("extended_risk", {})
-    risk = result.get("risk_score", 0)
-    if isinstance(risk, dict):
-        risk = 0
     score = result.get("predicted_score", "?-?")
     odds = result.get("odds", {})
     tki = result.get("tki", {})
@@ -71,10 +63,24 @@ def _format_analysis(result: dict) -> str:
     competition = info.get("competition", "")
     kickoff = info.get("kickoff", "")
 
-    # Risiko-Emoji
-    risk_emoji = ["🟢", "🟢", "🟡", "🟡", "🔴", "🔴"][min(risk, 5)]
+    # Risiko aus extended_risk["overall"] oder fallback auf risk_score
+    overall_risk = ext_risk.get("overall", risk_score) if ext_risk else risk_score
+    empfehlung = ""
 
-    # Value Bet Check (Prob > implizite Quote)
+    # Empfehlung aus calculate_risk_score Struktur (simpler risk_score)
+    risk_labels = {
+        0: "Sehr niedrig",
+        1: "Gute Basis für Wetten",
+        2: "Solide Wettmöglichkeit",
+        3: "Standard-Risiko",
+        4: "Vorsicht bei Wetten",
+        5: "Sehr spekulativ",
+    }
+    empfehlung = risk_labels.get(int(overall_risk), "")
+
+    risk_emoji = ["🟢", "🟢", "🟡", "🟡", "🔴", "🔴"][min(int(overall_risk), 5)]
+
+    # Value Bet Check
     def implied_prob(odd):
         try:
             return 1 / float(odd) * 100
@@ -82,23 +88,26 @@ def _format_analysis(result: dict) -> str:
             return 0
 
     odds_1x2 = odds.get("1x2", (0, 0, 0))
-    value_hints = []
-    if probs.get("home_win", 0) > implied_prob(odds_1x2[0]) + 5:
-        value_hints.append(f"✅ VALUE: Heimsieg (Quote {odds_1x2[0]})")
-    if probs.get("draw", 0) > implied_prob(odds_1x2[1]) + 5:
-        value_hints.append(f"✅ VALUE: Unentschieden (Quote {odds_1x2[1]})")
-    if probs.get("away_win", 0) > implied_prob(odds_1x2[2]) + 5:
-        value_hints.append(f"✅ VALUE: Auswärtssieg (Quote {odds_1x2[2]})")
-
     odds_ou = odds.get("ou25", (0, 0))
-    if probs.get("over_25", 0) > implied_prob(odds_ou[0]) + 5:
-        value_hints.append(f"✅ VALUE: Über 2.5 (Quote {odds_ou[0]})")
-    if probs.get("under_25", 0) > implied_prob(odds_ou[1]) + 5:
-        value_hints.append(f"✅ VALUE: Unter 2.5 (Quote {odds_ou[1]})")
+    odds_btts = odds.get("btts", (0, 0))
+
+    value_hints = []
+    checks = [
+        ("Heimsieg", probs.get("home_win", 0), implied_prob(odds_1x2[0]), odds_1x2[0]),
+        ("Unentschieden", probs.get("draw", 0), implied_prob(odds_1x2[1]), odds_1x2[1]),
+        ("Auswärtssieg", probs.get("away_win", 0), implied_prob(odds_1x2[2]), odds_1x2[2]),
+        ("Über 2.5", probs.get("over_25", 0), implied_prob(odds_ou[0]), odds_ou[0]),
+        ("Unter 2.5", probs.get("under_25", 0), implied_prob(odds_ou[1]), odds_ou[1]),
+        ("BTTS Ja", probs.get("btts_yes", 0), implied_prob(odds_btts[0]), odds_btts[0]),
+        ("BTTS Nein", probs.get("btts_no", 0), implied_prob(odds_btts[1]), odds_btts[1]),
+    ]
+    for label, our_prob, imp_prob, odd in checks:
+        if odd and our_prob > imp_prob + 5:
+            value_hints.append(f"✅ VALUE: {label} @ {odd}")
 
     value_section = "\n".join(value_hints) if value_hints else "⚪ Kein klarer Value erkannt"
 
-    # TKI
+    # TKI Warnung
     tki_h = tki.get("home", 0)
     tki_a = tki.get("away", 0)
     tki_note = ""
@@ -113,29 +122,27 @@ def _format_analysis(result: dict) -> str:
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🎯 <b>Prognose: {score}</b>\n\n"
         f"📊 <b>Wahrscheinlichkeiten</b>\n"
-        f"  Heimsieg:     <b>{probs.get('home_win', 0):.1f}%</b>\n"
+        f"  Heimsieg:      <b>{probs.get('home_win', 0):.1f}%</b>\n"
         f"  Unentschieden: <b>{probs.get('draw', 0):.1f}%</b>\n"
-        f"  Auswärtssieg: <b>{probs.get('away_win', 0):.1f}%</b>\n\n"
+        f"  Auswärtssieg:  <b>{probs.get('away_win', 0):.1f}%</b>\n\n"
         f"  Über 2.5:  <b>{probs.get('over_25', 0):.1f}%</b>\n"
         f"  Unter 2.5: <b>{probs.get('under_25', 0):.1f}%</b>\n"
-        f"  BTTS Ja:   <b>{probs.get('btts_yes', 0):.1f}%</b>\n\n"
-        f"🔢 <b>μ-Werte</b>  (Heim: {mu.get('home', 0):.2f} | Gast: {mu.get('away', 0):.2f})\n"
+        f"  BTTS Ja:   <b>{probs.get('btts_yes', 0):.1f}%</b>\n"
+        f"  BTTS Nein: <b>{probs.get('btts_no', 0):.1f}%</b>\n"
         f"{tki_note}\n"
+        f"🔢 μ: Heim {mu.get('home', 0):.2f} | Gast {mu.get('away', 0):.2f}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"💰 <b>Value Bets</b>\n"
         f"{value_section}\n\n"
-        f"{risk_emoji} <b>Risiko: {risk}/5</b>  ({ext_risk.get('empfehlung', '')})\n"
+        f"{risk_emoji} <b>Risiko: {int(overall_risk)}/5</b>  {empfehlung}\n"
     )
     return text
 
 
 def _format_match_list(matches: list, title: str) -> str:
-    """Formatiert eine Liste von Matches"""
     text = f"📅 <b>{title}</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
     for i, m in enumerate(matches, 1):
         text += f"{i}. {m['home']} vs {m['away']}\n"
-        if m.get("kickoff"):
-            text += f"   ⏰ {m['kickoff']}\n"
     text += "\n💡 Klicke eine Zahl für die Analyse"
     return text
 
@@ -175,7 +182,6 @@ async def today_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     date_str, sheet_id = result
     tabs = list_tabs_in_sheet(sheet_id)
-    # Filtere Management-Tabs raus (typische Namen)
     skip = {"overview", "übersicht", "zusammenfassung", "tracking", "results"}
     match_tabs = [t for t in tabs if t.lower() not in skip]
 
@@ -183,24 +189,22 @@ async def today_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await loading.edit_text(f"📭 Keine Match-Tabs in Sheet {date_str} gefunden.")
         return
 
-    matches = [{"home": t.split(" vs ")[0] if " vs " in t else t,
-                "away": t.split(" vs ")[1] if " vs " in t else "",
-                "tab": t,
-                "sheet_id": sheet_id}
-               for t in match_tabs]
-
-    # Speichere Matches im Context für Callback
+    matches = [
+        {"home": t.split(" vs ")[0].strip() if " vs " in t else t,
+         "away": t.split(" vs ")[1].strip() if " vs " in t else "",
+         "tab": t, "sheet_id": sheet_id}
+        for t in match_tabs
+    ]
     context.bot_data[f"matches_{date_str}"] = matches
 
     text = _format_match_list(
-        [{"home": m["home"], "away": m["away"], "kickoff": ""} for m in matches],
+        [{"home": m["home"], "away": m["away"]} for m in matches],
         f"HEUTE – {date_str}"
     )
 
-    # Buttons: eine Reihe pro 2 Matches
     keyboard = []
     row = []
-    for i, m in enumerate(match_tabs, 1):
+    for i in range(1, len(match_tabs) + 1):
         row.append(InlineKeyboardButton(str(i), callback_data=f"analyze_{date_str}_{i-1}"))
         if len(row) == 3:
             keyboard.append(row)
@@ -223,10 +227,9 @@ async def dates_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sorted_dates = sorted(dates.keys(), reverse=True)
     text = f"📆 <b>VERFÜGBARE DATEN</b> ({len(sorted_dates)} Tage)\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
-    # Gruppiere nach Monat
     by_month: dict = {}
     for d in sorted_dates:
-        month = d[3:]  # MM.YYYY
+        month = d[3:]
         by_month.setdefault(month, []).append(d)
 
     for month in sorted(by_month.keys(), reverse=True)[:4]:
@@ -241,9 +244,7 @@ async def dates_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_html(
-            "❌ Format: /date DD.MM.YYYY\nBeispiel: /date 15.02.2025"
-        )
+        await update.message.reply_html("❌ Format: /date DD.MM.YYYY\nBeispiel: /date 15.02.2025")
         return
 
     date_str = context.args[0]
@@ -263,16 +264,16 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await loading.edit_text(f"📭 Keine Match-Tabs für {date_str}.")
         return
 
-    matches = [{"home": t.split(" vs ")[0] if " vs " in t else t,
-                "away": t.split(" vs ")[1] if " vs " in t else "",
-                "tab": t,
-                "sheet_id": sheet_id}
-               for t in match_tabs]
-
+    matches = [
+        {"home": t.split(" vs ")[0].strip() if " vs " in t else t,
+         "away": t.split(" vs ")[1].strip() if " vs " in t else "",
+         "tab": t, "sheet_id": sheet_id}
+        for t in match_tabs
+    ]
     context.bot_data[f"matches_{date_str}"] = matches
 
     text = _format_match_list(
-        [{"home": m["home"], "away": m["away"], "kickoff": ""} for m in matches],
+        [{"home": m["home"], "away": m["away"]} for m in matches],
         f"MATCHES – {date_str}"
     )
 
@@ -290,7 +291,6 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Analysiert alle heutigen Matches und filtert Value Bets"""
     msg = update.message or update.callback_query.message
     loading = await msg.reply_html("💰 Berechne Wett-Empfehlungen...")
 
@@ -318,10 +318,8 @@ async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         probs = analysis.get("probabilities", {})
         odds = analysis.get("odds", {})
-        ext_risk_data = analysis.get("extended_risk", {})
-        risk = ext_risk_data.get("overall", analysis.get("risk_score", 5))
-        if isinstance(risk, dict):
-            risk = 5
+        ext_risk = analysis.get("extended_risk", {})
+        overall_risk = ext_risk.get("overall", analysis.get("risk_score", 5)) if ext_risk else analysis.get("risk_score", 5)
         info = analysis.get("match_info", {})
 
         def implied(o):
@@ -330,6 +328,7 @@ async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         odds_1x2 = odds.get("1x2", (0, 0, 0))
         odds_ou = odds.get("ou25", (0, 0))
+        odds_btts = odds.get("btts", (0, 0))
 
         checks = [
             ("Heimsieg", probs.get("home_win", 0), implied(odds_1x2[0]), odds_1x2[0]),
@@ -337,11 +336,13 @@ async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ("Auswärtssieg", probs.get("away_win", 0), implied(odds_1x2[2]), odds_1x2[2]),
             ("Über 2.5", probs.get("over_25", 0), implied(odds_ou[0]), odds_ou[0]),
             ("Unter 2.5", probs.get("under_25", 0), implied(odds_ou[1]), odds_ou[1]),
+            ("BTTS Ja", probs.get("btts_yes", 0), implied(odds_btts[0]), odds_btts[0]),
+            ("BTTS Nein", probs.get("btts_no", 0), implied(odds_btts[1]), odds_btts[1]),
         ]
 
         for bet_type, our_prob, imp_prob, odd in checks:
             edge = our_prob - imp_prob
-            if edge >= 5 and risk <= 3:
+            if edge >= 5 and overall_risk <= 3 and odd:
                 recommendations.append({
                     "home": info.get("home_team", "?"),
                     "away": info.get("away_team", "?"),
@@ -349,21 +350,18 @@ async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "prob": our_prob,
                     "odd": odd,
                     "edge": edge,
-                    "risk": risk,
+                    "risk": int(overall_risk),
                 })
 
     if not recommendations:
         await loading.edit_text(
             "📭 <b>Keine klaren Value Bets heute</b>\n\n"
-            "Alle Matches haben entweder:\n"
-            "• Kein ausreichendes Value (Edge < 5%)\n"
-            "• Zu hohes Risiko (> 3/5)\n\n"
+            "Kein ausreichendes Value (Edge < 5%) oder zu hohes Risiko.\n\n"
             "Nutze /today für manuelle Analyse.",
             parse_mode="HTML"
         )
         return
 
-    # Sortiere nach Edge
     recommendations.sort(key=lambda x: x["edge"], reverse=True)
 
     text = f"💰 <b>VALUE BETS – {date_str}</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -372,7 +370,7 @@ async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += (
             f"<b>{i}. {rec['home']} vs {rec['away']}</b>\n"
             f"   Tipp: <b>{rec['bet_type']}</b>\n"
-            f"   Quote: {rec['odd']}  |  Unsere Prob: {rec['prob']:.1f}%\n"
+            f"   Quote: {rec['odd']}  |  Prob: {rec['prob']:.1f}%\n"
             f"   Edge: +{rec['edge']:.1f}%  {risk_emoji} Risiko {rec['risk']}/5\n\n"
         )
 
@@ -395,7 +393,6 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     elif data == "cmd_dates":
         await dates_handler(update, context)
     elif data.startswith("analyze_"):
-        # Format: analyze_DD.MM.YYYY_INDEX
         parts = data.split("_", 2)
         if len(parts) == 3:
             _, date_str, idx_str = parts
@@ -429,6 +426,8 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 # ─────────────────────────────────────────────
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.error(f"Update {update} – Fehler: {context.error}", exc_info=context.error)
+    logger.error(f"Fehler: {context.error}", exc_info=context.error)
     if update and update.effective_message:
-        await update.effective_message.reply_text("❌ Interner Fehler. Bitte nochmal versuchen.")
+        await update.effective_message.reply_text(
+            f"❌ Fehler: {str(context.error)[:200]}"
+        )
