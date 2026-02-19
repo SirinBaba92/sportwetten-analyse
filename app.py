@@ -281,6 +281,13 @@ def main():
     # Session State initialisieren
     initialize_session_state()
 
+    # Telegram Bot im Hintergrund starten (nur wenn Token gesetzt)
+    try:
+        from telegram_bot.bot_runner import start_bot_in_background
+        start_bot_in_background()
+    except Exception:
+        pass  # Bot-Fehler sollen die App nie blockieren
+
     # --- Export-Handler (läuft bei jedem Rerun) ---
     # Wichtig: Button-Klicks lösen immer einen Rerun aus. Damit Exporte auch ohne "Analyse erneut starten"
     # funktionieren, führen wir die Exporte hier aus – basierend auf dem zuletzt gespeicherten Analyse-Result.
