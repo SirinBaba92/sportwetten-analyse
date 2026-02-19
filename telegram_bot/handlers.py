@@ -161,8 +161,6 @@ async def today_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.callback_query.message
     loading = await msg.reply_html("🔄 Lade heutige Matches...")
 
-        return
-
     result = get_todays_sheet_id()
     if not result:
         await loading.edit_text("📭 Keine Matches für heute gefunden.")
@@ -210,8 +208,6 @@ async def dates_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.callback_query.message
     loading = await msg.reply_html("🔄 Lade verfügbare Daten...")
 
-        return
-
     dates = list_available_dates()
     if not dates:
         await loading.edit_text("📭 Keine Daten verfügbar.")
@@ -245,8 +241,6 @@ async def date_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     date_str = context.args[0]
     loading = await update.message.reply_html(f"🔄 Lade Matches für {date_str}...")
-
-        return
 
     dates = list_available_dates()
     if date_str not in dates:
@@ -292,8 +286,6 @@ async def bet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Analysiert alle heutigen Matches und filtert Value Bets"""
     msg = update.message or update.callback_query.message
     loading = await msg.reply_html("💰 Berechne Wett-Empfehlungen...")
-
-        return
 
     result = get_todays_sheet_id()
     if not result:
