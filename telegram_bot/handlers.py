@@ -452,6 +452,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                     ("BTTS Nein",     probs.get("btts_no", 0),    60, odds.get("btts", [0,0])[1]),
                 ]
                 qualified = [(bt, prob, odd) for bt, prob, thr, odd in all_options if prob >= thr and odd > 0]
+                risk_score = result.get("risk_score", 3)
 
                 if qualified:
                     # Speichere Session in bot_data
@@ -460,7 +461,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                     context.bot_data[sess_key] = {
                         "match": match_name,
                         "date_str": date_str,
-                        "qualified": [{"bet_type": bt, "prob": prob, "odds": odd} for bt, prob, odd in qualified],
+                        "qualified": [{"bet_type": bt, "prob": prob, "odds": odd, "risk_score": risk_score} for bt, prob, odd in qualified],
                         "selected": [],  # ausgewählte Indizes
                     }
                     # Toggle-Buttons: alle unausgewählt
@@ -521,6 +522,26 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 ),
                 parse_mode="HTML"
             )
+    elif data.startswith("profil_"):
+        key = data[len("profil_"):]
+        from telegram_bot.bankroll import set_risk_profile, RISK_PROFILES
+        if set_risk_profile(query.from_user.id, key):
+            prof = RISK_PROFILES[key]
+            keyboard = []
+            for k, p in RISK_PROFILES.items():
+                mark = "✅ " if k == key else ""
+                keyboard.append([InlineKeyboardButton(
+                    f"{mark}{p['name']} (max {p['max_stake_percent']}%)",
+                    callback_data=f"profil_{k}"
+                )])
+            await query.edit_message_text(
+                f"✅ Profil geändert: <b>{prof['name']}</b>\n\n"
+                f"Adjustment: {prof['adjustment']}x\n"
+                f"Max Einsatz: {prof['max_stake_percent']}% der Bankroll",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
     elif data.startswith("btog_"):
         # Toggle Wettart an/aus
         parts = data.split("_")
@@ -640,9 +661,9 @@ async def _ask_stake(query, context, uid: int, sess_key: str):
     pending = sess["pending"]
     idx = pending[0]
     opt = sess["qualified"][idx]
-    from telegram_bot.bankroll import get_bankroll, kelly_stake
-    bankroll = get_bankroll(uid)
-    kelly = kelly_stake(opt["prob"], opt["odds"], bankroll)
+    from telegram_bot.bankroll import calculate_stake
+    risk_score = opt.get("risk_score", 3)
+    stake_info = calculate_stake(uid, risk_score, float(opt["odds"]))
     done = len(sess["placed"])
     total = len(sess["selected"])
     text = (
@@ -650,25 +671,22 @@ async def _ask_stake(query, context, uid: int, sess_key: str):
         f"Match: <b>{sess['match']}</b>\n"
         f"Tipp: <b>{opt['bet_type']}</b> @ {opt['odds']}\n"
         f"Wahrsch.: <b>{opt['prob']:.1f}%</b>\n\n"
-        f"💼 Bankroll: <b>{bankroll:.2f} €</b>\n"
-        f"📐 Kelly: <b>{kelly:.2f} €</b>\n\n"
+        f"💼 Bankroll: <b>{stake_info['bankroll']:.2f} €</b>\n"
+        f"⚙️ Profil: <b>{stake_info['profile_name']}</b>\n\n"
+        f"📐 Empfohlen: <b>{stake_info['recommended']:.2f} €</b> ({stake_info['percentage']}%)\n"
+        f"🏆 Potentieller Gewinn: <b>+{stake_info['potential_win']:.2f} €</b>\n\n"
         "Wähle deinen Einsatz:"
     )
-    options = []
-    for pct in [1, 2, 5]:
-        stake = round(bankroll * pct / 100, 2)
-        if stake > 0:
-            options.append(InlineKeyboardButton(
-                f"{pct}% ({stake:.2f}€)",
-                callback_data=f"bstake_{uid}_{idx}_{pct}"
-            ))
-    if kelly > 0:
-        options.append(InlineKeyboardButton(
-            f"Kelly ({kelly:.2f}€)",
-            callback_data=f"bstake_{uid}_{idx}_k"
-        ))
-    keyboard = [options[i:i+2] for i in range(0, len(options), 2)]
-    keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data="bank_cancel")])
+    keyboard = [
+        [
+            InlineKeyboardButton(f"½ ({stake_info['half']:.2f}€)",        callback_data=f"bstake_{uid}_{idx}_h"),
+            InlineKeyboardButton(f"✅ Empfohlen ({stake_info['recommended']:.2f}€)", callback_data=f"bstake_{uid}_{idx}_r"),
+        ],
+        [
+            InlineKeyboardButton(f"2× ({stake_info['double']:.2f}€)",     callback_data=f"bstake_{uid}_{idx}_d"),
+            InlineKeyboardButton("❌ Überspringen",                         callback_data=f"bstake_{uid}_{idx}_s"),
+        ],
+    ]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
