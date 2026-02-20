@@ -854,3 +854,25 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"💔 Größter Verlust: <b>{stats['worst_loss']['profit']:.2f} €</b> ({stats['worst_loss']['match']})\n"
 
     await msg.reply_html(text)
+
+
+async def profil_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    from telegram_bot.bankroll import RISK_PROFILES, get_risk_profile
+    current = get_risk_profile(user_id)
+    current_name = RISK_PROFILES[current]["name"]
+
+    text = (
+        f"⚙️ <b>Risikoprofil</b>\n\n"
+        f"Aktuell: <b>{current_name}</b>\n\n"
+        f"Das Profil bestimmt die Einsatzhöhe\n"
+        f"basierend auf dem Risiko-Score des Spiels."
+    )
+    keyboard = []
+    for key, prof in RISK_PROFILES.items():
+        mark = "✅ " if key == current else ""
+        keyboard.append([InlineKeyboardButton(
+            f"{mark}{prof['name']} (max {prof['max_stake_percent']}%)",
+            callback_data=f"profil_{key}"
+        )])
+    await update.message.reply_html(text, reply_markup=InlineKeyboardMarkup(keyboard))
