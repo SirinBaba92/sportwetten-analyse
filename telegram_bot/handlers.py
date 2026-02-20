@@ -476,7 +476,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                     # Toggle-Buttons: alle unausgewählt
                     btn_rows = []
                     row = []
-                    for i, (bt, prob, odd) in enumerate(qualified):
+                    for i, (bt, prob, odd, rs) in enumerate(qualified):
                         row.append(InlineKeyboardButton(
                             f"⬜ {bt} @ {odd}",
                             callback_data=f"btog_{uid}_{i}"
