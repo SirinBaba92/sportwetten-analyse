@@ -599,29 +599,32 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         await _ask_stake(query, context, uid, sess_key)
 
     elif data.startswith("bstake_"):
-        # Einsatz gewählt → Wette platzieren, nächste oder Abschluss
         parts = data.split("_")
-        uid, idx, pct_str = int(parts[1]), int(parts[2]), parts[3]
+        uid, idx, choice = int(parts[1]), int(parts[2]), parts[3]
         sess_key = f"bsess_{uid}"
         sess = context.bot_data.get(sess_key)
         if not sess:
-            await query.answer("❌ Session abgelaufen.", show_alert=True)
+            await query.answer("Session abgelaufen.", show_alert=True)
             return
-        from telegram_bot.bankroll import place_bet, get_bankroll, kelly_stake
+        from telegram_bot.bankroll import place_bet, calculate_stake
         opt = sess["qualified"][idx]
-        bankroll = get_bankroll(uid)
-        if pct_str == "k":
-            stake = kelly_stake(opt["prob"], opt["odds"], bankroll)
-        else:
-            stake = round(bankroll * int(pct_str) / 100, 2)
+        if choice == "s":
+            sess["pending"].pop(0)
+            context.bot_data[sess_key] = sess
+            if sess["pending"]:
+                await _ask_stake(query, context, uid, sess_key)
+            else:
+                await _show_placed_summary(query, context, uid, sess_key)
+            return
+        stake_info = calculate_stake(uid, opt.get("risk_score", 3), float(opt["odds"]))
+        stake = {"h": stake_info["half"], "r": stake_info["recommended"], "d": stake_info["double"]}.get(choice, stake_info["recommended"])
         result = place_bet(uid, sess["match"], opt["bet_type"], float(opt["odds"]), stake, float(opt["prob"]))
         if "error" in result:
-            await query.answer(f"❌ Fehler: {result['error']}", show_alert=True)
+            await query.answer(f"Fehler: {result['error']}", show_alert=True)
             return
         sess["placed"].append(result["bet"])
         sess["pending"].pop(0)
         context.bot_data[sess_key] = sess
-        # Nächste Wette oder Abschluss
         if sess["pending"]:
             await _ask_stake(query, context, uid, sess_key)
         else:
