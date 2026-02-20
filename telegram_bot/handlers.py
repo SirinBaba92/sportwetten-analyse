@@ -442,33 +442,35 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 info = result.get("match_info", {})
                 match_name = f"{info.get('home', '?')[:12]} vs {info.get('away', '?')[:12]}"
 
+                ext = result.get("extended_risk", {})
+
+                def _rs(d):
+                    """Extrahiert risk_score als int aus dict oder int"""
+                    if isinstance(d, dict):
+                        return int(d.get("risk_score", d.get("score", 3)))
+                    try:
+                        return int(d)
+                    except Exception:
+                        return 3
+
                 all_options = [
-                    ("Heimsieg",      probs.get("home_win", 0),  50, odds.get("1x2", [0,0,0])[0]),
-                    ("Unentschieden", probs.get("draw", 0),       50, odds.get("1x2", [0,0,0])[1]),
-                    ("Auswärtssieg",  probs.get("away_win", 0),   50, odds.get("1x2", [0,0,0])[2]),
-                    ("Über 2.5",      probs.get("over_25", 0),    60, odds.get("ou25", [0,0])[0]),
-                    ("Unter 2.5",     probs.get("under_25", 0),   60, odds.get("ou25", [0,0])[1]),
-                    ("BTTS Ja",       probs.get("btts_yes", 0),   60, odds.get("btts", [0,0])[0]),
-                    ("BTTS Nein",     probs.get("btts_no", 0),    60, odds.get("btts", [0,0])[1]),
+                    ("Heimsieg",      probs.get("home_win", 0),  50, odds.get("1x2", [0,0,0])[0], _rs(ext.get("1x2", 3))),
+                    ("Unentschieden", probs.get("draw", 0),       50, odds.get("1x2", [0,0,0])[1], _rs(ext.get("1x2", 3))),
+                    ("Auswärtssieg",  probs.get("away_win", 0),   50, odds.get("1x2", [0,0,0])[2], _rs(ext.get("1x2", 3))),
+                    ("Über 2.5",      probs.get("over_25", 0),    60, odds.get("ou25", [0,0])[0],  _rs(ext.get("over_under", {}).get("over", 3))),
+                    ("Unter 2.5",     probs.get("under_25", 0),   60, odds.get("ou25", [0,0])[1],  _rs(ext.get("over_under", {}).get("under", 3))),
+                    ("BTTS Ja",       probs.get("btts_yes", 0),   60, odds.get("btts", [0,0])[0],  _rs(ext.get("btts", {}).get("yes", 3))),
+                    ("BTTS Nein",     probs.get("btts_no", 0),    60, odds.get("btts", [0,0])[1],  _rs(ext.get("btts", {}).get("no", 3))),
                 ]
-                qualified = [(bt, prob, odd) for bt, prob, thr, odd in all_options if prob >= thr and odd > 0]
-                # risk_score sicher als int extrahieren
-                _rs = result.get("risk_score", 3)
-                if isinstance(_rs, dict):
-                    _rs = _rs.get("score", _rs.get("value", 3))
-                try:
-                    risk_score = int(_rs)
-                except Exception:
-                    risk_score = 3
+                qualified = [(bt, prob, odd, rs) for bt, prob, thr, odd, rs in all_options if prob >= thr and odd > 0]
 
                 if qualified:
-                    # Speichere Session in bot_data
                     uid = query.from_user.id
                     sess_key = f"bsess_{uid}"
                     context.bot_data[sess_key] = {
                         "match": match_name,
                         "date_str": date_str,
-                        "qualified": [{"bet_type": bt, "prob": prob, "odds": odd, "risk_score": risk_score} for bt, prob, odd in qualified],
+                        "qualified": [{"bet_type": bt, "prob": prob, "odds": odd, "risk_score": rs} for bt, prob, odd, rs in qualified],
                         "selected": [],  # ausgewählte Indizes
                     }
                     # Toggle-Buttons: alle unausgewählt
