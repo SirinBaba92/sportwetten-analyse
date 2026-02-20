@@ -33,6 +33,7 @@ async def _poll(token: str):
         start_handler, lang_handler, today_handler, dates_handler,
         date_handler, bet_handler, button_callback_handler, error_handler,
         bankroll_handler, setbank_handler, open_bets_handler, stats_handler,
+        profil_handler,
     )
 
     app = Application.builder().token(token).build()
@@ -42,6 +43,7 @@ async def _poll(token: str):
     app.add_handler(CommandHandler("setbank", setbank_handler))
     app.add_handler(CommandHandler("open", open_bets_handler))
     app.add_handler(CommandHandler("stats", stats_handler))
+    app.add_handler(CommandHandler("profil", profil_handler))
     app.add_handler(CommandHandler("today", today_handler))
     app.add_handler(CommandHandler("dates", dates_handler))
     app.add_handler(CommandHandler("date", date_handler))
