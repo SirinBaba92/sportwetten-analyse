@@ -452,7 +452,14 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                     ("BTTS Nein",     probs.get("btts_no", 0),    60, odds.get("btts", [0,0])[1]),
                 ]
                 qualified = [(bt, prob, odd) for bt, prob, thr, odd in all_options if prob >= thr and odd > 0]
-                risk_score = result.get("risk_score", 3)
+                # risk_score sicher als int extrahieren
+                _rs = result.get("risk_score", 3)
+                if isinstance(_rs, dict):
+                    _rs = _rs.get("score", _rs.get("value", 3))
+                try:
+                    risk_score = int(_rs)
+                except Exception:
+                    risk_score = 3
 
                 if qualified:
                     # Speichere Session in bot_data
