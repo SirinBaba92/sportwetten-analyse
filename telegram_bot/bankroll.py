@@ -211,3 +211,71 @@ def get_stats(user_id: int) -> dict:
         "best_win": best_win,
         "worst_loss": worst_loss,
     }
+
+
+# ─────────────────────────────────────────────
+# STAKE EMPFEHLUNG (identisch mit Streamlit App)
+# ─────────────────────────────────────────────
+
+STAKE_PERCENTAGES = {
+    1: 0.5,
+    2: 1.0,
+    3: 2.0,
+    4: 3.5,
+    5: 5.0,
+}
+
+RISK_PROFILES = {
+    "sehr_konservativ": {"name": "Sehr konservativ", "adjustment": 0.7,  "max_stake_percent": 2.0},
+    "konservativ":      {"name": "Konservativ",      "adjustment": 0.85, "max_stake_percent": 3.0},
+    "moderat":          {"name": "Moderat",           "adjustment": 1.0,  "max_stake_percent": 5.0},
+    "aggressiv":        {"name": "Aggressiv",         "adjustment": 1.15, "max_stake_percent": 7.0},
+    "sehr_aggressiv":   {"name": "Sehr aggressiv",    "adjustment": 1.3,  "max_stake_percent": 10.0},
+}
+
+DEFAULT_PROFILE = "moderat"
+
+
+def get_risk_profile(user_id: int) -> str:
+    data = get_user_data(user_id)
+    return data.get("risk_profile", DEFAULT_PROFILE)
+
+
+def set_risk_profile(user_id: int, profile: str):
+    if profile not in RISK_PROFILES:
+        return False
+    data = get_user_data(user_id)
+    data["risk_profile"] = profile
+    save_user_data(user_id)
+    return True
+
+
+def calculate_stake(user_id: int, risk_score: int, odds: float) -> dict:
+    """
+    Berechnet Einsatz-Empfehlung basierend auf Risiko-Score und Profil
+    Identisch mit der Streamlit App Logik
+    """
+    data = get_user_data(user_id)
+    bankroll = data["bankroll"]
+    profile_key = data.get("risk_profile", DEFAULT_PROFILE)
+    profile = RISK_PROFILES[profile_key]
+
+    base_pct = STAKE_PERCENTAGES.get(risk_score, 2.0)
+    adjusted_pct = base_pct * profile["adjustment"]
+    final_pct = min(adjusted_pct, profile["max_stake_percent"])
+
+    recommended = round(bankroll * (final_pct / 100), 2)
+    half = round(recommended * 0.5, 2)
+    double = round(min(recommended * 2, bankroll * profile["max_stake_percent"] / 100), 2)
+
+    potential_win = round(recommended * (odds - 1), 2)
+
+    return {
+        "recommended": recommended,
+        "half": half,
+        "double": double,
+        "percentage": round(final_pct, 2),
+        "potential_win": potential_win,
+        "profile_name": profile["name"],
+        "bankroll": bankroll,
+    }
