@@ -46,6 +46,9 @@ from data import (
 # Analysis
 from analysis import validate_match_data, analyze_match_v47_ml
 
+# ML Predictions
+from ui.ml_predictions_ui import show_ml_predictions_tab
+
 
 def choose_consistent_predicted_score(result: dict) -> dict:
     """Passt nur predicted_score an, ohne die bestehenden Wahrscheinlichkeiten (1X2/OU/BTTS) zu verändern.
@@ -442,13 +445,14 @@ def main():
     )
 
     # Tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         [
             "⚽ Match-Analyse",
             "🤖 ML Training",
             "📚 Training Data",
             "📊 Statistiken",
             "🎮 Demo Performance",
+            "🎯 ML Predictions",  # NEU!
         ]
     )
 
@@ -553,7 +557,11 @@ def main():
                 _scroll_to_analysis_anchor("analysis_results")
                 st.session_state._scroll_to_results = False
             st.markdown("### 🧠 Letztes Analyse-Ergebnis")
-            display_results(st.session_state.analysis_cache_by_tab[_cache_key])
+            try:
+                display_results(st.session_state.analysis_cache_by_tab[_cache_key])
+            except Exception as e:
+                st.error(f"❌ Fehler beim Anzeigen der Analyse: {str(e)}")
+                st.info("Tipp: Nutze Tab 6 'ML Predictions' für zuverlässige Vorhersagen!")
             st.markdown("---")
 
         # Lade Match-Daten
@@ -1227,6 +1235,14 @@ def main():
                         st.session_state.risk_management["stake_history"] = []
                         st.success("✅ Performance zurückgesetzt!")
                         st.rerun()
+
+    # ================== TAB 6: ML PREDICTIONS ==================
+    with tab6:
+        # Übergebe sheet_id und selected_tab für Sheets-Integration
+        show_ml_predictions_tab(
+            sheet_id=sheet_id if 'sheet_id' in locals() else None,
+            selected_tab=st.session_state.get('selected_tab', '')
+        )
 
 
 if __name__ == "__main__":
