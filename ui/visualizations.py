@@ -386,6 +386,11 @@ def show_team_radar(result: Dict):
         result: Analyse-Ergebnis Dictionary
     """
     st.subheader("🕸️ Team-Vergleich (Radar)")
+    
+    # Safety Check
+    if "match_data" not in result:
+        st.warning("⚠️ Radar-Chart nicht verfügbar (fehlende Match-Daten)")
+        return
 
     home_team = result["match_data"].home_team
     away_team = result["match_data"].away_team
