@@ -612,7 +612,11 @@ def display_results(result: Dict):
         show_confidence_gauge(result)
 
     with viz_tab4:
-        show_team_radar(result)
+        try:
+            show_team_radar(result)
+        except Exception as e:
+            st.warning(f"⚠️ Radar-Chart nicht verfügbar: {str(e)}")
+            st.info("Das Team-Radar-Chart benötigt vollständige Match-Daten.")
 
 
 def display_risk_distribution(all_results: List[Dict]):
