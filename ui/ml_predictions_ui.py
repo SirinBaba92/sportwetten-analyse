@@ -2,7 +2,7 @@
 UI für ML Predictions
 Zeigt XGBoost/RandomForest Predictions mit Sheets-Integration
 """
-
+import os
 import streamlit as st
 from typing import Dict, Optional
 from ml.football_ml_models import get_ml_models
