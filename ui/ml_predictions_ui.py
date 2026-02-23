@@ -7,7 +7,12 @@ import streamlit as st
 from typing import Dict, Optional
 from ml.football_ml_models import get_ml_models
 from ui.sheets_ml_integration import show_sheets_ml_predictions
-
+# DEBUG - ZEIGE PFAD
+st.write("🔍 DEBUG INFO:")
+st.write("Current Dir:", os.getcwd())
+st.write("Models folder exists?", os.path.exists("models"))
+if os.path.exists("models"):
+    st.write("Files in models/:", os.listdir("models"))
 
 def show_ml_predictions_tab(sheet_id: str = None, selected_tab: str = None):
     """
