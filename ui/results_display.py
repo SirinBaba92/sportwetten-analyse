@@ -14,10 +14,10 @@ from analysis.validation import check_alerts
 def _display_ml_predictions_inline(result: Dict):
     """
     Zeigt ML Predictions im gleichen Format wie Score-Vorhersage
-    Lädt ECHTE Match-Daten aus Google Sheets!
+    Nutzt die GLEICHEN Sheet-Daten wie Tab 6!
     
     Args:
-        result: Analyse-Ergebnis Dictionary
+        result: Analyse-Ergebnis Dictionary (enthält _sheet_id und _selected_tab)
     """
     try:
         # Importiere benötigte Module
@@ -35,39 +35,41 @@ def _display_ml_predictions_inline(result: Dict):
             st.info("💡 ML Models nicht verfügbar. Nutze Tab 6 für manuelle ML Predictions.")
             return
         
-        # Hole Match Info aus result
-        match_info = result.get('match_info', {})
-        home_team = match_info.get('home', '')
-        away_team = match_info.get('away', '')
-        match_date = match_info.get('date', '')
+        # Hole sheet_id und tab aus result (wurde in app.py gespeichert!)
+        sheet_id = result.get('_sheet_id')
+        selected_tab = result.get('_selected_tab')
         
-        if not home_team or not away_team:
-            st.warning("⚠️ Match-Info fehlt")
-            return
-        
-        # Versuche Match aus Google Sheets zu laden
-        with st.spinner(f"🔍 Suche '{home_team} vs {away_team}' in Google Sheets..."):
-            match_data = _load_match_from_sheets(home_team, away_team, match_date)
-        
-        if not match_data:
-            # Fallback: Zeige Info dass Sheets-Daten benötigt werden
-            st.info(f"""
-            💡 **Match nicht in Google Sheets gefunden**
-            
-            Gesucht: **{home_team} vs {away_team}**
-            Datum: {match_date or 'N/A'}
-            
-            **Mögliche Gründe:**
-            - Match-Daten noch nicht in Sheets
-            - Team-Namen unterscheiden sich (z.B. "FC Augsburg" vs "Augsburg")
-            - Match in anderem Tabellenblatt
-            
-            **Für vollständige ML Predictions:**
-            → Nutze Tab 6 "ML Predictions" und wähle Match aus der Liste
+        if not sheet_id or not selected_tab:
+            st.info("""
+            💡 **Für ML Predictions:**
+            → Nutze Tab 6 "ML Predictions" für vollständige Analyse
             """)
             return
         
-        # Konvertiere zu Features
+        # Lade Match-Daten DIREKT aus Sheets (wie Tab 6!)
+        try:
+            with st.spinner("Lade Match-Daten für ML..."):
+                match_text = read_worksheet_text_by_id(sheet_id, selected_tab)
+                
+                if not match_text:
+                    st.warning("⚠️ Konnte Match-Daten nicht laden")
+                    return
+                
+                # Parse Match-Daten
+                parser = DataParser()
+                match_data = parser.parse(match_text)
+                
+        except Exception as e:
+            st.info(f"""
+            💡 **ML Predictions nicht verfügbar**
+            
+            Fehler beim Laden: {str(e)}
+            
+            → Nutze Tab 6 "ML Predictions" für vollständige Analyse
+            """)
+            return
+        
+        # Konvertiere zu Features (GLEICHE Funktion wie Tab 6!)
         features = convert_match_data_to_features(match_data)
         
         # Hole Predictions (MIT Quoten)
@@ -139,161 +141,16 @@ def _display_ml_predictions_inline(result: Dict):
         _show_consensus_analysis(result, predictions, best_scoreline)
         
         # Erfolgs-Hinweis
-        st.caption(f"✅ ML Predictions basieren auf echten Match-Daten aus Google Sheets")
+        st.caption(f"✅ ML Predictions basieren auf echten Match-Daten (gleiche Quelle wie Tab 6)")
         
     except Exception as e:
         # Stilles Fallback - zeige nur Info
         st.info("""
         💡 **ML Predictions mit vollständigen Daten:**
-        → Nutze Tab 6 "ML Predictions" für Predictions mit allen Match-Stats
+        → Nutze Tab 6 "ML Predictions"
         """)
-
-
-def _load_match_from_sheets(home_team: str, away_team: str, match_date: str):
-    """
-    Lädt Match-Daten aus Google Sheets basierend auf Team-Namen
-    
-    Returns:
-        MatchData object oder None
-    """
-    try:
-        from data import list_daily_sheets_in_folder, read_worksheet_text_by_id, DataParser
-        
-        # Hole Folder ID aus Session State
-        folder_id = st.session_state.get('folder_id')
-        if not folder_id:
-            return None
-        
-        # Liste alle Sheets
-        date_to_id = list_daily_sheets_in_folder(folder_id)
-        
-        if not date_to_id:
-            return None
-        
-        # Finde das richtige Sheet (probiere aktuelles Datum oder alle)
-        sheet_ids_to_check = []
-        
-        # Wenn Datum bekannt, versuche genau dieses Sheet
-        if match_date and match_date in date_to_id:
-            sheet_ids_to_check.append(date_to_id[match_date])
-        
-        # Sonst probiere die letzten 3 Sheets
-        sorted_dates = sorted(date_to_id.keys(), reverse=True)[:3]
-        for d in sorted_dates:
-            if date_to_id[d] not in sheet_ids_to_check:
-                sheet_ids_to_check.append(date_to_id[d])
-        
-        # Durchsuche Sheets
-        parser = DataParser()
-        
-        for sheet_id in sheet_ids_to_check:
-            try:
-                # Hole alle Tabs
-                from data.google_sheets import connect_to_sheets
-                service = connect_to_sheets()
-                if not service:
-                    continue
-                
-                metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
-                sheets = metadata.get('sheets', [])
-                
-                # Durchsuche alle Tabs
-                for sheet in sheets:
-                    tab_name = sheet['properties']['title']
-                    
-                    # Prüfe ob Tab-Name zu Teams passt
-                    if _match_names_in_tab(tab_name, home_team, away_team):
-                        # Lade und parse
-                        match_text = read_worksheet_text_by_id(sheet_id, tab_name)
-                        if match_text:
-                            match_data = parser.parse(match_text)
-                            return match_data
-                            
-            except Exception:
-                continue
-        
-        return None
-        
-    except Exception:
-        return None
-
-
-def _match_names_in_tab(tab_name: str, home_team: str, away_team: str) -> bool:
-    """
-    Prüft ob Tab-Name die Team-Namen enthält
-    Sehr tolerant für verschiedene Schreibweisen
-    """
-    def normalize_team_name(name: str) -> str:
-        """Normalisiert Team-Namen für Vergleich"""
-        name = name.lower().strip()
-        
-        # Entferne häufige Präfixe und Suffixe
-        removals = [
-            'fc ', ' fc', 'cf ', ' cf', 'sc ', ' sc', 'sv ', ' sv',
-            'ac ', ' ac', 'rc ', ' rc', 'asc ', ' asc',
-            'bfc ', ' bfc', 'ssc ', ' ssc',
-            'united', 'city', 'town', 'athletic', 'rovers',
-            'wanderers', 'albion', 'county', 'borough',
-            '1. ', '1.fc ', 'fc.', 'e.v.', ' ii', ' iii',
-            'vfl ', ' vfl', 'tsv ', ' tsv', 'sv ', ' sv'
-        ]
-        
-        for removal in removals:
-            name = name.replace(removal, ' ')
-        
-        # Entferne Zahlen am Anfang
-        import re
-        name = re.sub(r'^\d+\.?\s*', '', name)
-        
-        # Entferne mehrfache Leerzeichen
-        name = ' '.join(name.split())
-        
-        return name.strip()
-    
-    # Normalisiere alle Namen
-    tab_normalized = normalize_team_name(tab_name)
-    home_normalized = normalize_team_name(home_team)
-    away_normalized = normalize_team_name(away_team)
-    
-    # CHECK 1: Volle Namen
-    if home_normalized in tab_normalized and away_normalized in tab_normalized:
-        return True
-    
-    # CHECK 2: Erste Wörter (Hauptname)
-    home_first = home_normalized.split()[0] if home_normalized else ''
-    away_first = away_normalized.split()[0] if away_normalized else ''
-    
-    if len(home_first) >= 4 and len(away_first) >= 4:  # Mindestens 4 Buchstaben
-        if home_first in tab_normalized and away_first in tab_normalized:
-            return True
-    
-    # CHECK 3: Enthält beide Kernwörter (längste Wörter)
-    def get_core_word(name: str) -> str:
-        """Findet das längste Wort (meist der Hauptname)"""
-        words = name.split()
-        if not words:
-            return ''
-        # Ignoriere sehr kurze Wörter
-        words = [w for w in words if len(w) >= 4]
-        return max(words, key=len) if words else words[0] if words else ''
-    
-    home_core = get_core_word(home_normalized)
-    away_core = get_core_word(away_normalized)
-    
-    if home_core and away_core:
-        if home_core in tab_normalized and away_core in tab_normalized:
-            return True
-    
-    # CHECK 4: Teilstring-Match mit mindestens 5 Zeichen
-    if len(home_normalized) >= 5 and len(away_normalized) >= 5:
-        # Nimm erste 5+ Zeichen
-        home_prefix = home_normalized[:max(5, len(home_normalized)//2)]
-        away_prefix = away_normalized[:max(5, len(away_normalized)//2)]
-        
-        if home_prefix in tab_normalized and away_prefix in tab_normalized:
-            return True
-    
-    return False
+        import traceback
+        st.caption(f"Debug: {traceback.format_exc()}")
 
 
 def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: Dict):
