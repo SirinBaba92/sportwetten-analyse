@@ -14,14 +14,17 @@ from analysis.validation import check_alerts
 def _display_ml_predictions_inline(result: Dict):
     """
     Zeigt ML Predictions im gleichen Format wie Score-Vorhersage
+    Lädt ECHTE Match-Daten aus Google Sheets!
     
     Args:
-        result: Analyse-Ergebnis Dictionary mit match_data
+        result: Analyse-Ergebnis Dictionary
     """
     try:
-        # Importiere ML Models
+        # Importiere benötigte Module
         from ml.football_ml_models import get_ml_models
         from ml.scoreline_predictor import ScorelinePredictor
+        from ui.sheets_ml_integration import convert_match_data_to_features
+        from data import read_worksheet_text_by_id, DataParser
         
         st.subheader("🤖 Machine Learning Prognose")
         
@@ -32,13 +35,33 @@ def _display_ml_predictions_inline(result: Dict):
             st.info("💡 ML Models nicht verfügbar. Nutze Tab 6 für manuelle ML Predictions.")
             return
         
-        # Extrahiere Features direkt aus result (nicht aus match_data!)
-        # result hat bereits alle berechneten Werte
-        features = _extract_features_from_result(result)
+        # Hole Match Info aus result
+        match_info = result.get('match_info', {})
+        home_team = match_info.get('home', '')
+        away_team = match_info.get('away', '')
+        match_date = match_info.get('date', '')
         
-        if not features:
-            st.warning("⚠️ Nicht genügend Daten für ML Predictions")
+        if not home_team or not away_team:
+            st.warning("⚠️ Match-Info fehlt")
             return
+        
+        # Versuche Match aus Google Sheets zu laden
+        match_data = _load_match_from_sheets(home_team, away_team, match_date)
+        
+        if not match_data:
+            # Fallback: Zeige Info dass Sheets-Daten benötigt werden
+            st.info(f"""
+            💡 **Für ML Predictions wird Google Sheets benötigt**
+            
+            Match: {home_team} vs {away_team}
+            
+            **Option 1:** Geh zu Tab 6 und wähle das Match aus der Liste
+            **Option 2:** Stelle sicher dass Match-Daten in Google Sheets vorhanden sind
+            """)
+            return
+        
+        # Konvertiere zu Features
+        features = convert_match_data_to_features(match_data)
         
         # Hole Predictions (MIT Quoten)
         predictions = ml_models.predict_all(features, use_odds=True)
@@ -46,9 +69,9 @@ def _display_ml_predictions_inline(result: Dict):
         # Erstelle Scoreline Predictor
         scoreline_pred = ScorelinePredictor()
         
-        # Berechne xG aus result
-        home_xg = result.get('mu', {}).get('home', 1.5)
-        away_xg = result.get('mu', {}).get('away', 1.3)
+        # Berechne xG aus Features
+        home_xg = features.get('home_avg_goals_scored_overall', 1.5) * 1.15
+        away_xg = features.get('away_avg_goals_scored_overall', 1.3) * 0.95
         
         # Generiere Scorelines
         scorelines = scoreline_pred.predict_scorelines(home_xg, away_xg, top_n=5)
@@ -108,77 +131,113 @@ def _display_ml_predictions_inline(result: Dict):
         # Konsens-Analyse
         _show_consensus_analysis(result, predictions, best_scoreline)
         
+        # Erfolgs-Hinweis
+        st.caption(f"✅ ML Predictions basieren auf echten Match-Daten aus Google Sheets")
+        
     except Exception as e:
-        st.error(f"❌ Fehler bei ML Predictions: {e}")
-        import traceback
-        st.caption(f"Debug: {traceback.format_exc()}")
+        # Stilles Fallback - zeige nur Info
+        st.info("""
+        💡 **ML Predictions mit vollständigen Daten:**
+        → Nutze Tab 6 "ML Predictions" für Predictions mit allen Match-Stats
+        """)
 
 
-def _extract_features_from_result(result: Dict) -> Dict:
+def _load_match_from_sheets(home_team: str, away_team: str, match_date: str):
     """
-    Extrahiert ML Features aus dem result Dictionary
+    Lädt Match-Daten aus Google Sheets basierend auf Team-Namen
+    
+    Returns:
+        MatchData object oder None
     """
     try:
-        # Hole odds aus extended_risk
-        odds_1x2 = result.get('extended_risk', {}).get('1x2', {}).get('odds', 2.0)
-        odds_ou = result.get('extended_risk', {}).get('over_under', {}).get('odds', 2.0)
-        odds_btts = result.get('extended_risk', {}).get('btts', {}).get('odds', 2.0)
+        from data import list_daily_sheets_in_folder, read_worksheet_text_by_id, DataParser
         
-        # Extrahiere Probabilities
-        probs = result.get('probabilities', {})
+        # Hole Folder ID aus Session State
+        folder_id = st.session_state.get('folder_id')
+        if not folder_id:
+            return None
         
-        # Reverse-engineer odds from probabilities
-        home_win_prob = probs.get('home_win', 33) / 100
-        draw_prob = probs.get('draw', 33) / 100
-        away_win_prob = probs.get('away_win', 33) / 100
+        # Liste alle Sheets
+        date_to_id = list_daily_sheets_in_folder(folder_id)
         
-        odds_home = 1 / home_win_prob if home_win_prob > 0 else 3.0
-        odds_draw = 1 / draw_prob if draw_prob > 0 else 3.0
-        odds_away = 1 / away_win_prob if away_win_prob > 0 else 3.0
+        if not date_to_id:
+            return None
         
-        over_prob = probs.get('over_25', 50) / 100
-        under_prob = probs.get('under_25', 50) / 100
-        odds_over25 = 1 / over_prob if over_prob > 0 else 2.0
-        odds_under25 = 1 / under_prob if under_prob > 0 else 2.0
+        # Finde das richtige Sheet (probiere aktuelles Datum oder alle)
+        sheet_ids_to_check = []
         
-        btts_yes_prob = probs.get('btts_yes', 50) / 100
-        btts_no_prob = probs.get('btts_no', 50) / 100
-        odds_btts_yes = 1 / btts_yes_prob if btts_yes_prob > 0 else 2.0
-        odds_btts_no = 1 / btts_no_prob if btts_no_prob > 0 else 2.0
+        # Wenn Datum bekannt, versuche genau dieses Sheet
+        if match_date and match_date in date_to_id:
+            sheet_ids_to_check.append(date_to_id[match_date])
         
-        # Extrahiere μ-values als goals
-        mu = result.get('mu', {})
-        home_goals = mu.get('home', 1.5)
-        away_goals = mu.get('away', 1.3)
+        # Sonst probiere die letzten 3 Sheets
+        sorted_dates = sorted(date_to_id.keys(), reverse=True)[:3]
+        for d in sorted_dates:
+            if date_to_id[d] not in sheet_ids_to_check:
+                sheet_ids_to_check.append(date_to_id[d])
         
-        # Erstelle Feature Dict
-        features = {
-            # Odds
-            'odds_home': odds_home,
-            'odds_draw': odds_draw,
-            'odds_away': odds_away,
-            'odds_over25': odds_over25,
-            'odds_under25': odds_under25,
-            'odds_btts_yes': odds_btts_yes,
-            'odds_btts_no': odds_btts_no,
-            
-            # Goals (approximiert)
-            'home_avg_goals_scored_overall': home_goals,
-            'away_avg_goals_scored_overall': away_goals,
-            'home_avg_goals_conceded_overall': away_goals,
-            'away_avg_goals_conceded_overall': home_goals,
-            
-            # Dummy values für fehlende Features
-            'home_position': 10,
-            'away_position': 10,
-            'home_points': 30,
-            'away_points': 30,
-        }
+        # Durchsuche Sheets
+        parser = DataParser()
         
-        return features
+        for sheet_id in sheet_ids_to_check:
+            try:
+                # Hole alle Tabs
+                from data.google_sheets import connect_to_sheets
+                service = connect_to_sheets()
+                if not service:
+                    continue
+                
+                metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+                sheets = metadata.get('sheets', [])
+                
+                # Durchsuche alle Tabs
+                for sheet in sheets:
+                    tab_name = sheet['properties']['title']
+                    
+                    # Prüfe ob Tab-Name zu Teams passt
+                    if _match_names_in_tab(tab_name, home_team, away_team):
+                        # Lade und parse
+                        match_text = read_worksheet_text_by_id(sheet_id, tab_name)
+                        if match_text:
+                            match_data = parser.parse(match_text)
+                            return match_data
+                            
+            except Exception:
+                continue
         
-    except Exception as e:
-        return {}
+        return None
+        
+    except Exception:
+        return None
+
+
+def _match_names_in_tab(tab_name: str, home_team: str, away_team: str) -> bool:
+    """
+    Prüft ob Tab-Name die Team-Namen enthält
+    """
+    tab_lower = tab_name.lower()
+    home_lower = home_team.lower()
+    away_lower = away_team.lower()
+    
+    # Entferne häufige Suffixe
+    for suffix in [' fc', ' cf', ' sc', ' sv', ' united', ' city']:
+        home_lower = home_lower.replace(suffix, '').strip()
+        away_lower = away_lower.replace(suffix, '').strip()
+        tab_lower = tab_lower.replace(suffix, '').strip()
+    
+    # Check verschiedene Formate
+    # Format 1: "Home vs Away"
+    if home_lower in tab_lower and away_lower in tab_lower:
+        return True
+    
+    # Format 2: Verkürzte Namen
+    home_short = home_lower.split()[0] if ' ' in home_lower else home_lower
+    away_short = away_lower.split()[0] if ' ' in away_lower else away_lower
+    
+    if home_short in tab_lower and away_short in tab_lower:
+        return True
+    
+    return False
 
 
 def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: Dict):
