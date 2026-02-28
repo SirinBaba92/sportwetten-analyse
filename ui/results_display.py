@@ -11,6 +11,167 @@ from models.risk_management import calculate_stake_recommendation
 from analysis.validation import check_alerts
 
 
+def _display_ml_predictions_inline(result: Dict):
+    """
+    Zeigt ML Predictions im gleichen Format wie Score-Vorhersage
+    
+    Args:
+        result: Analyse-Ergebnis Dictionary mit match_data
+    """
+    try:
+        # Importiere ML Models
+        from ml.football_ml_models import get_ml_models
+        from ml.scoreline_predictor import ScorelinePredictor
+        from ui.sheets_ml_integration import convert_match_data_to_features
+        
+        st.subheader("🤖 Machine Learning Prognose")
+        
+        # Lade Models
+        ml_models = get_ml_models()
+        
+        if not ml_models.models_loaded:
+            st.info("💡 ML Models nicht verfügbar. Nutze Tab 6 für manuelle ML Predictions.")
+            return
+        
+        # Konvertiere Match Data zu Features
+        if "match_data" not in result:
+            st.warning("⚠️ Keine Match-Daten verfügbar für ML Predictions")
+            return
+        
+        features = convert_match_data_to_features(result["match_data"])
+        
+        # Hole Predictions (MIT Quoten)
+        predictions = ml_models.predict_all(features, use_odds=True)
+        
+        # Erstelle Scoreline Predictor
+        scoreline_pred = ScorelinePredictor()
+        
+        # Berechne xG
+        home_xg = features.get('home_avg_goals_scored_overall', 1.5) * 1.15
+        away_xg = features.get('away_avg_goals_scored_overall', 1.3) * 0.95
+        
+        # Generiere Scorelines
+        scorelines = scoreline_pred.predict_scorelines(home_xg, away_xg, top_n=5)
+        best_scoreline = scorelines[0] if scorelines else None
+        
+        # Display im gleichen 4-Spalten Format
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            # 1X2
+            if 'ix2' in predictions:
+                pred_1x2 = predictions['1x2']
+                label_map = {
+                    'HOME WIN': 'Heimsieg',
+                    'DRAW': 'Unentschieden',
+                    'AWAY WIN': 'Auswärtssieg'
+                }
+                pred_label = label_map.get(pred_1x2['prediction'], pred_1x2['prediction'])
+                st.success(
+                    f"### 🎯 1X2\n\n"
+                    f"**{pred_label}**\n\n"
+                    f"# {pred_1x2['confidence']:.1f}%"
+                )
+        
+        with col2:
+            # Over/Under
+            if 'over_under' in predictions:
+                pred_ou = predictions['over_under']
+                st.success(
+                    f"### 📈 Over/Under 2.5\n\n"
+                    f"**{pred_ou['prediction']}**\n\n"
+                    f"# {pred_ou['confidence']:.1f}%"
+                )
+        
+        with col3:
+            # BTTS
+            if 'btts' in predictions:
+                pred_btts = predictions['btts']
+                label_map = {'BTTS YES': 'BTTS Ja', 'BTTS NO': 'BTTS Nein'}
+                pred_label = label_map.get(pred_btts['prediction'], pred_btts['prediction'])
+                st.success(
+                    f"### ⚽ BTTS\n\n"
+                    f"**{pred_label}**\n\n"
+                    f"# {pred_btts['confidence']:.1f}%"
+                )
+        
+        with col4:
+            # Wahrscheinlichstes Ergebnis
+            if best_scoreline:
+                st.success(
+                    f"### 🏆 Wahrscheinlichstes Ergebnis\n\n"
+                    f"# {best_scoreline['scoreline']}\n\n"
+                    f"**Wahrscheinlichkeit:**\n"
+                    f"# {best_scoreline['probability']:.1f}%"
+                )
+        
+        # Konsens-Analyse
+        _show_consensus_analysis(result, predictions, best_scoreline)
+        
+    except Exception as e:
+        st.error(f"❌ Fehler bei ML Predictions: {e}")
+        st.caption("Nutze Tab 6 für ML Predictions")
+
+
+def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: Dict):
+    """
+    Zeigt Konsens zwischen SMART-PRECISION und ML
+    """
+    try:
+        # Extrahiere SMART-PRECISION Predictions
+        probs = result.get("probabilities", {})
+        
+        smart_1x2 = "Heimsieg" if probs.get("home_win", 0) >= max(probs.get("draw", 0), probs.get("away_win", 0)) else (
+            "Unentschieden" if probs.get("draw", 0) >= probs.get("away_win", 0) else "Auswärtssieg"
+        )
+        smart_ou = "Over 2.5" if probs.get("over_25", 0) >= probs.get("under_25", 0) else "Under 2.5"
+        smart_btts = "BTTS Ja" if probs.get("btts_yes", 0) >= probs.get("btts_no", 0) else "BTTS Nein"
+        smart_score = result.get("predicted_score", "N/A")
+        
+        # Extrahiere ML Predictions
+        ml_1x2_raw = ml_predictions.get('1x2', {}).get('prediction', '')
+        ml_1x2 = {'HOME WIN': 'Heimsieg', 'DRAW': 'Unentschieden', 'AWAY WIN': 'Auswärtssieg'}.get(ml_1x2_raw, ml_1x2_raw)
+        ml_ou = ml_predictions.get('over_under', {}).get('prediction', '')
+        ml_btts_raw = ml_predictions.get('btts', {}).get('prediction', '')
+        ml_btts = {'BTTS YES': 'BTTS Ja', 'BTTS NO': 'BTTS Nein'}.get(ml_btts_raw, ml_btts_raw)
+        ml_score = ml_scoreline.get('scoreline', 'N/A') if ml_scoreline else 'N/A'
+        
+        # Check Konsens
+        consensus_items = []
+        
+        if smart_1x2 == ml_1x2:
+            consensus_items.append(smart_1x2)
+        if smart_ou == ml_ou:
+            consensus_items.append(ml_ou)
+        if smart_btts == ml_btts:
+            consensus_items.append(ml_btts)
+        if smart_score == ml_score:
+            consensus_items.append(f"Score: {smart_score}")
+        
+        if len(consensus_items) >= 2:
+            st.success(
+                f"### ✅ Konsens-Analyse\n\n"
+                f"**Beide Systeme einig bei:** {', '.join(consensus_items)}\n\n"
+                f"🎯 **HOHE CONFIDENCE!**"
+            )
+        elif len(consensus_items) == 1:
+            st.info(
+                f"### 📊 Konsens-Analyse\n\n"
+                f"**Übereinstimmung:** {consensus_items[0]}\n\n"
+                f"⚠️ Andere Markets unterscheiden sich - Vorsicht!"
+            )
+        else:
+            st.warning(
+                f"### ⚠️ Konsens-Analyse\n\n"
+                f"**Keine Übereinstimmung** zwischen den Systemen.\n\n"
+                f"💡 Bei Uneinigkeit: höhere Vorsicht oder Skip!"
+            )
+            
+    except Exception as e:
+        # Stilles Ignorieren wenn Konsens nicht berechnet werden kann
+        pass
+
+
 def display_stake_recommendation(
     risk_score: int, odds: float, market_name: str, match_info: str = ""
 ):
@@ -515,6 +676,12 @@ def display_results(result: Dict):
                 f"# {score_prob:.1f}%"
             )
 
+    # ========================================================================
+    # ML PREDICTIONS - DIREKT HIER!
+    # ========================================================================
+    st.markdown("---")
+    _display_ml_predictions_inline(result)
+    
     # Export zu Google Sheets
     st.markdown("---")
     st.subheader("📤 Export zu Google Sheets")
