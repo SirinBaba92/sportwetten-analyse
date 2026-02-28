@@ -87,16 +87,30 @@ def export_analysis_to_sheets(result: dict, actual_score: str = None) -> bool:
         prob_btts_no = probs["btts_no"]
         best_btts_prob = max(prob_btts_yes, prob_btts_no)
 
-        # Bestimme welche Prediction (für Quote-Matching)
+        # Bestimme welche Prediction (für Quote-Matching UND Labels)
         if best_1x2_prob == prob_1x2_home:
             smart_1x2_prediction = "HOME"
+            smart_1x2_label = "1"
         elif best_1x2_prob == prob_1x2_draw:
             smart_1x2_prediction = "DRAW"
+            smart_1x2_label = "X"
         else:
             smart_1x2_prediction = "AWAY"
+            smart_1x2_label = "2"
 
-        smart_ou_prediction = "OVER" if best_ou_prob == prob_over else "UNDER"
-        smart_btts_prediction = "YES" if best_btts_prob == prob_btts_yes else "NO"
+        if best_ou_prob == prob_over:
+            smart_ou_prediction = "OVER"
+            smart_ou_label = "Over 2.5"
+        else:
+            smart_ou_prediction = "UNDER"
+            smart_ou_label = "Under 2.5"
+
+        if best_btts_prob == prob_btts_yes:
+            smart_btts_prediction = "YES"
+            smart_btts_label = "Yes"
+        else:
+            smart_btts_prediction = "NO"
+            smart_btts_label = "No"
 
         # ===================================================================
         # ML PREDICTIONS
@@ -108,6 +122,9 @@ def export_analysis_to_sheets(result: dict, actual_score: str = None) -> bool:
         ml_1x2_prediction = None
         ml_ou_prediction = None
         ml_btts_prediction = None
+        ml_1x2_label = ""
+        ml_ou_label = ""
+        ml_btts_label = ""
 
         # Versuche ML Predictions zu laden
         try:
@@ -134,18 +151,29 @@ def export_analysis_to_sheets(result: dict, actual_score: str = None) -> bool:
                         if '1x2' in predictions:
                             ml_1x2_prob = predictions['1x2']['confidence']
                             ml_1x2_prediction = predictions['1x2']['prediction']  # HOME WIN, DRAW, AWAY WIN
+                            # Label erstellen
+                            if 'HOME' in ml_1x2_prediction:
+                                ml_1x2_label = "1"
+                            elif 'DRAW' in ml_1x2_prediction:
+                                ml_1x2_label = "X"
+                            else:
+                                ml_1x2_label = "2"
 
                         # Over/Under
                         if 'over_under' in predictions:
                             ml_ou_prob = predictions['over_under']['confidence']
                             pred = predictions['over_under']['prediction']
                             ml_ou_prediction = "OVER" if "OVER" in pred else "UNDER"
+                            # Label erstellen
+                            ml_ou_label = "Over 2.5" if "OVER" in pred else "Under 2.5"
 
                         # BTTS
                         if 'btts' in predictions:
                             ml_btts_prob = predictions['btts']['confidence']
                             pred = predictions['btts']['prediction']
                             ml_btts_prediction = "YES" if "YES" in pred else "NO"
+                            # Label erstellen
+                            ml_btts_label = "Yes" if "YES" in pred else "No"
 
                         # Score
                         scoreline_pred = ScorelinePredictor()
@@ -195,25 +223,37 @@ def export_analysis_to_sheets(result: dict, actual_score: str = None) -> bool:
                     consensus_btts_odds = f"{odds_btts.get('no', {}).get('odds', 0.0):.2f}"
 
         # ===================================================================
-        # ERSTELLE UPDATES
+        # ERSTELLE UPDATES MIT LABELS
         # ===================================================================
         updates = [
             # Match Name
             {"range": f"{sheet_tab_name}!B{next_row}", "values": [[match_name]]},
             
-            # ZEILE 4: 1X2
-            {"range": f"{sheet_tab_name}!B{next_row + 3}", "values": [[f"{best_1x2_prob:.1f}%"]]},  # Alte
-            {"range": f"{sheet_tab_name}!C{next_row + 3}", "values": [[f"{ml_1x2_prob:.1f}%" if ml_1x2_prob else ""]]},  # ML
+            # ZEILE 3: 1X2 Labels
+            {"range": f"{sheet_tab_name}!B{next_row + 2}", "values": [[smart_1x2_label]]},  # Alte Label
+            {"range": f"{sheet_tab_name}!C{next_row + 2}", "values": [[ml_1x2_label]]},  # ML Label
+            
+            # ZEILE 4: 1X2 Percentages & Quote
+            {"range": f"{sheet_tab_name}!B{next_row + 3}", "values": [[f"{best_1x2_prob:.1f}%"]]},  # Alte %
+            {"range": f"{sheet_tab_name}!C{next_row + 3}", "values": [[f"{ml_1x2_prob:.1f}%" if ml_1x2_prob else ""]]},  # ML %
             {"range": f"{sheet_tab_name}!E{next_row + 3}", "values": [[consensus_1x2_odds]]},  # Konsens Quote
             
-            # ZEILE 6: Over/Under
-            {"range": f"{sheet_tab_name}!B{next_row + 5}", "values": [[f"{best_ou_prob:.1f}%"]]},  # Alte
-            {"range": f"{sheet_tab_name}!C{next_row + 5}", "values": [[f"{ml_ou_prob:.1f}%" if ml_ou_prob else ""]]},  # ML
+            # ZEILE 5: Over/Under Labels
+            {"range": f"{sheet_tab_name}!B{next_row + 4}", "values": [[smart_ou_label]]},  # Alte Label
+            {"range": f"{sheet_tab_name}!C{next_row + 4}", "values": [[ml_ou_label]]},  # ML Label
+            
+            # ZEILE 6: Over/Under Percentages & Quote
+            {"range": f"{sheet_tab_name}!B{next_row + 5}", "values": [[f"{best_ou_prob:.1f}%"]]},  # Alte %
+            {"range": f"{sheet_tab_name}!C{next_row + 5}", "values": [[f"{ml_ou_prob:.1f}%" if ml_ou_prob else ""]]},  # ML %
             {"range": f"{sheet_tab_name}!E{next_row + 5}", "values": [[consensus_ou_odds]]},  # Konsens Quote
             
-            # ZEILE 8: BTTS
-            {"range": f"{sheet_tab_name}!B{next_row + 7}", "values": [[f"{best_btts_prob:.1f}%"]]},  # Alte
-            {"range": f"{sheet_tab_name}!C{next_row + 7}", "values": [[f"{ml_btts_prob:.1f}%" if ml_btts_prob else ""]]},  # ML
+            # ZEILE 7: BTTS Labels
+            {"range": f"{sheet_tab_name}!B{next_row + 6}", "values": [[smart_btts_label]]},  # Alte Label
+            {"range": f"{sheet_tab_name}!C{next_row + 6}", "values": [[ml_btts_label]]},  # ML Label
+            
+            # ZEILE 8: BTTS Percentages & Quote
+            {"range": f"{sheet_tab_name}!B{next_row + 7}", "values": [[f"{best_btts_prob:.1f}%"]]},  # Alte %
+            {"range": f"{sheet_tab_name}!C{next_row + 7}", "values": [[f"{ml_btts_prob:.1f}%" if ml_btts_prob else ""]]},  # ML %
             {"range": f"{sheet_tab_name}!E{next_row + 7}", "values": [[consensus_btts_odds]]},  # Konsens Quote
             
             # ZEILE 9: Scores
