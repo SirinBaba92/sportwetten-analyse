@@ -182,16 +182,36 @@ def _display_ml_predictions_inline(result: Dict):
 def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: Dict):
     """
     Zeigt Konsens zwischen SMART-PRECISION und ML
+    NUR wenn SMART-PRECISION Schwellenwerte erreicht:
+    - 1X2: ≥ 50%
+    - Over/Under: ≥ 60%
+    - BTTS: ≥ 60%
     """
     try:
         # Extrahiere SMART-PRECISION Predictions
         probs = result.get("probabilities", {})
         
-        smart_1x2 = "Heimsieg" if probs.get("home_win", 0) >= max(probs.get("draw", 0), probs.get("away_win", 0)) else (
-            "Unentschieden" if probs.get("draw", 0) >= probs.get("away_win", 0) else "Auswärtssieg"
+        # Hole Wahrscheinlichkeiten
+        smart_home = probs.get("home_win", 0)
+        smart_draw = probs.get("draw", 0)
+        smart_away = probs.get("away_win", 0)
+        smart_over = probs.get("over_25", 0)
+        smart_under = probs.get("under_25", 0)
+        smart_btts_yes = probs.get("btts_yes", 0)
+        smart_btts_no = probs.get("btts_no", 0)
+        
+        # Beste Predictions
+        smart_1x2 = "Heimsieg" if smart_home >= max(smart_draw, smart_away) else (
+            "Unentschieden" if smart_draw >= smart_away else "Auswärtssieg"
         )
-        smart_ou = "Over 2.5" if probs.get("over_25", 0) >= probs.get("under_25", 0) else "Under 2.5"
-        smart_btts = "BTTS Ja" if probs.get("btts_yes", 0) >= probs.get("btts_no", 0) else "BTTS Nein"
+        smart_1x2_prob = max(smart_home, smart_draw, smart_away)
+        
+        smart_ou = "Over 2.5" if smart_over >= smart_under else "Under 2.5"
+        smart_ou_prob = max(smart_over, smart_under)
+        
+        smart_btts = "BTTS Ja" if smart_btts_yes >= smart_btts_no else "BTTS Nein"
+        smart_btts_prob = max(smart_btts_yes, smart_btts_no)
+        
         smart_score = result.get("predicted_score", "N/A")
         
         # Extrahiere ML Predictions
@@ -202,36 +222,57 @@ def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: D
         ml_btts = {'BTTS YES': 'BTTS Ja', 'BTTS NO': 'BTTS Nein'}.get(ml_btts_raw, ml_btts_raw)
         ml_score = ml_scoreline.get('scoreline', 'N/A') if ml_scoreline else 'N/A'
         
-        # Check Konsens
+        # Check Konsens MIT SCHWELLENWERTEN!
         consensus_items = []
+        weak_items = []  # Items die matchen aber Schwellenwert nicht erreichen
         
+        # 1X2: Nur wenn SMART ≥ 50%
         if smart_1x2 == ml_1x2:
-            consensus_items.append(smart_1x2)
+            if smart_1x2_prob >= 50:
+                consensus_items.append(f"{smart_1x2} ({smart_1x2_prob:.1f}%)")
+            else:
+                weak_items.append(f"{smart_1x2} (nur {smart_1x2_prob:.1f}%, <50%)")
+        
+        # Over/Under: Nur wenn SMART ≥ 60%
         if smart_ou == ml_ou:
-            consensus_items.append(ml_ou)
+            if smart_ou_prob >= 60:
+                consensus_items.append(f"{smart_ou} ({smart_ou_prob:.1f}%)")
+            else:
+                weak_items.append(f"{smart_ou} (nur {smart_ou_prob:.1f}%, <60%)")
+        
+        # BTTS: Nur wenn SMART ≥ 60%
         if smart_btts == ml_btts:
-            consensus_items.append(ml_btts)
+            if smart_btts_prob >= 60:
+                consensus_items.append(f"{smart_btts} ({smart_btts_prob:.1f}%)")
+            else:
+                weak_items.append(f"{smart_btts} (nur {smart_btts_prob:.1f}%, <60%)")
+        
+        # Score (kein Schwellenwert)
         if smart_score == ml_score:
             consensus_items.append(f"Score: {smart_score}")
         
+        # Zeige Konsens-Ergebnis
         if len(consensus_items) >= 2:
             st.success(
                 f"### ✅ Konsens-Analyse\n\n"
-                f"**Beide Systeme einig bei:** {', '.join(consensus_items)}\n\n"
+                f"**Starke Übereinstimmung bei:** {', '.join(consensus_items)}\n\n"
                 f"🎯 **HOHE CONFIDENCE!**"
             )
         elif len(consensus_items) == 1:
-            st.info(
-                f"### 📊 Konsens-Analyse\n\n"
-                f"**Übereinstimmung:** {consensus_items[0]}\n\n"
-                f"⚠️ Andere Markets unterscheiden sich - Vorsicht!"
-            )
+            msg = f"### 📊 Konsens-Analyse\n\n**Übereinstimmung:** {consensus_items[0]}\n\n"
+            if weak_items:
+                msg += f"⚠️ **Schwache Matches (Schwellenwert nicht erreicht):**\n{', '.join(weak_items)}\n\n"
+            msg += f"💡 Teilweise Einigkeit - moderate Vorsicht!"
+            st.info(msg)
         else:
-            st.warning(
-                f"### ⚠️ Konsens-Analyse\n\n"
-                f"**Keine Übereinstimmung** zwischen den Systemen.\n\n"
-                f"💡 Bei Uneinigkeit: höhere Vorsicht oder Skip!"
-            )
+            msg = f"### ⚠️ Konsens-Analyse\n\n"
+            if weak_items:
+                msg += f"**Schwache Matches (Schwellenwert nicht erreicht):**\n{', '.join(weak_items)}\n\n"
+                msg += f"💡 Predictions matchen, aber Alte Confidence zu niedrig!\n\n"
+            else:
+                msg += f"**Keine Übereinstimmung** zwischen den Systemen.\n\n"
+            msg += f"⚠️ Bei Uneinigkeit: höhere Vorsicht oder Skip!"
+            st.warning(msg)
             
     except Exception as e:
         # Stilles Ignorieren wenn Konsens nicht berechnet werden kann
