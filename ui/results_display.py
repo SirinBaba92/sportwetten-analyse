@@ -22,7 +22,6 @@ def _display_ml_predictions_inline(result: Dict):
         # Importiere ML Models
         from ml.football_ml_models import get_ml_models
         from ml.scoreline_predictor import ScorelinePredictor
-        from ui.sheets_ml_integration import convert_match_data_to_features
         
         st.subheader("🤖 Machine Learning Prognose")
         
@@ -33,12 +32,13 @@ def _display_ml_predictions_inline(result: Dict):
             st.info("💡 ML Models nicht verfügbar. Nutze Tab 6 für manuelle ML Predictions.")
             return
         
-        # Konvertiere Match Data zu Features
-        if "match_data" not in result:
-            st.warning("⚠️ Keine Match-Daten verfügbar für ML Predictions")
-            return
+        # Extrahiere Features direkt aus result (nicht aus match_data!)
+        # result hat bereits alle berechneten Werte
+        features = _extract_features_from_result(result)
         
-        features = convert_match_data_to_features(result["match_data"])
+        if not features:
+            st.warning("⚠️ Nicht genügend Daten für ML Predictions")
+            return
         
         # Hole Predictions (MIT Quoten)
         predictions = ml_models.predict_all(features, use_odds=True)
@@ -46,9 +46,9 @@ def _display_ml_predictions_inline(result: Dict):
         # Erstelle Scoreline Predictor
         scoreline_pred = ScorelinePredictor()
         
-        # Berechne xG
-        home_xg = features.get('home_avg_goals_scored_overall', 1.5) * 1.15
-        away_xg = features.get('away_avg_goals_scored_overall', 1.3) * 0.95
+        # Berechne xG aus result
+        home_xg = result.get('mu', {}).get('home', 1.5)
+        away_xg = result.get('mu', {}).get('away', 1.3)
         
         # Generiere Scorelines
         scorelines = scoreline_pred.predict_scorelines(home_xg, away_xg, top_n=5)
@@ -59,7 +59,7 @@ def _display_ml_predictions_inline(result: Dict):
         
         with col1:
             # 1X2
-            if 'ix2' in predictions:
+            if '1x2' in predictions:
                 pred_1x2 = predictions['1x2']
                 label_map = {
                     'HOME WIN': 'Heimsieg',
@@ -110,7 +110,75 @@ def _display_ml_predictions_inline(result: Dict):
         
     except Exception as e:
         st.error(f"❌ Fehler bei ML Predictions: {e}")
-        st.caption("Nutze Tab 6 für ML Predictions")
+        import traceback
+        st.caption(f"Debug: {traceback.format_exc()}")
+
+
+def _extract_features_from_result(result: Dict) -> Dict:
+    """
+    Extrahiert ML Features aus dem result Dictionary
+    """
+    try:
+        # Hole odds aus extended_risk
+        odds_1x2 = result.get('extended_risk', {}).get('1x2', {}).get('odds', 2.0)
+        odds_ou = result.get('extended_risk', {}).get('over_under', {}).get('odds', 2.0)
+        odds_btts = result.get('extended_risk', {}).get('btts', {}).get('odds', 2.0)
+        
+        # Extrahiere Probabilities
+        probs = result.get('probabilities', {})
+        
+        # Reverse-engineer odds from probabilities
+        home_win_prob = probs.get('home_win', 33) / 100
+        draw_prob = probs.get('draw', 33) / 100
+        away_win_prob = probs.get('away_win', 33) / 100
+        
+        odds_home = 1 / home_win_prob if home_win_prob > 0 else 3.0
+        odds_draw = 1 / draw_prob if draw_prob > 0 else 3.0
+        odds_away = 1 / away_win_prob if away_win_prob > 0 else 3.0
+        
+        over_prob = probs.get('over_25', 50) / 100
+        under_prob = probs.get('under_25', 50) / 100
+        odds_over25 = 1 / over_prob if over_prob > 0 else 2.0
+        odds_under25 = 1 / under_prob if under_prob > 0 else 2.0
+        
+        btts_yes_prob = probs.get('btts_yes', 50) / 100
+        btts_no_prob = probs.get('btts_no', 50) / 100
+        odds_btts_yes = 1 / btts_yes_prob if btts_yes_prob > 0 else 2.0
+        odds_btts_no = 1 / btts_no_prob if btts_no_prob > 0 else 2.0
+        
+        # Extrahiere μ-values als goals
+        mu = result.get('mu', {})
+        home_goals = mu.get('home', 1.5)
+        away_goals = mu.get('away', 1.3)
+        
+        # Erstelle Feature Dict
+        features = {
+            # Odds
+            'odds_home': odds_home,
+            'odds_draw': odds_draw,
+            'odds_away': odds_away,
+            'odds_over25': odds_over25,
+            'odds_under25': odds_under25,
+            'odds_btts_yes': odds_btts_yes,
+            'odds_btts_no': odds_btts_no,
+            
+            # Goals (approximiert)
+            'home_avg_goals_scored_overall': home_goals,
+            'away_avg_goals_scored_overall': away_goals,
+            'home_avg_goals_conceded_overall': away_goals,
+            'away_avg_goals_conceded_overall': home_goals,
+            
+            # Dummy values für fehlende Features
+            'home_position': 10,
+            'away_position': 10,
+            'home_points': 30,
+            'away_points': 30,
+        }
+        
+        return features
+        
+    except Exception as e:
+        return {}
 
 
 def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: Dict):
