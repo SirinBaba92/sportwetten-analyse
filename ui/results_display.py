@@ -374,6 +374,64 @@ def display_results(result: Dict):
 
     st.markdown("---")
 
+    # ========================================================================
+    # SCORE-VORHERSAGE - DIREKT NACH QUICK SUMMARY!
+    # ========================================================================
+    st.subheader("📊 Score-Vorhersage")
+
+    # Verwende 4 Spalten statt 3 für bessere Aufteilung
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        # 1X2 mit größerer Schrift
+        best_1x2 = (
+            "Heimsieg"
+            if probs["home_win"] >= probs["draw"]
+            and probs["home_win"] >= probs["away_win"]
+            else (
+                "Unentschieden"
+                if probs["draw"] >= probs["away_win"]
+                else "Auswärtssieg"
+            )
+        )
+        best_1x2_prob = max(probs["home_win"], probs["draw"], probs["away_win"])
+        # Grüner Hintergrund wie st.success(), größere Schrift
+        st.success(f"### 🎯 1X2\n\n" f"**{best_1x2}**\n\n" f"# {best_1x2_prob:.1f}%")
+
+    with col2:
+        # Over/Under 2.5 - separate Box
+        best_ou = "Over 2.5" if probs["over_25"] >= probs["under_25"] else "Under 2.5"
+        best_ou_prob = max(probs["over_25"], probs["under_25"])
+        st.success(
+            f"### 📈 Over/Under 2.5\n\n" f"**{best_ou}**\n\n" f"# {best_ou_prob:.1f}%"
+        )
+
+    with col3:
+        # BTTS - separate Box
+        best_btts = "BTTS Ja" if probs["btts_yes"] >= probs["btts_no"] else "BTTS Nein"
+        best_btts_prob = max(probs["btts_yes"], probs["btts_no"])
+        st.success(f"### ⚽ BTTS\n\n" f"**{best_btts}**\n\n" f"# {best_btts_prob:.1f}%")
+
+    with col4:
+        # Wahrscheinlichstes Ergebnis - größte Box
+        if result["scorelines"]:
+            predicted_score = result["predicted_score"]
+            score_prob = result["scorelines"][0][1]
+            st.success(
+                f"### 🏆 Wahrscheinlichstes Ergebnis\n\n"
+                f"# {predicted_score}\n\n"
+                f"**Wahrscheinlichkeit:**\n"
+                f"# {score_prob:.1f}%"
+            )
+
+    # ========================================================================
+    # ML PREDICTIONS - DIREKT DANACH!
+    # ========================================================================
+    st.markdown("---")
+    _display_ml_predictions_inline(result)
+    
+    st.markdown("---")
+
     # Alarm-System
     alerts = check_alerts(
         result["mu"]["home"],
@@ -668,60 +726,6 @@ def display_results(result: Dict):
     )
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-    # Score-Vorhersage - OPTIMIERTE VERSION
-    st.subheader("📊 Score-Vorhersage")
-
-    # Verwende 4 Spalten statt 3 für bessere Aufteilung
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        # 1X2 mit größerer Schrift
-        best_1x2 = (
-            "Heimsieg"
-            if probs["home_win"] >= probs["draw"]
-            and probs["home_win"] >= probs["away_win"]
-            else (
-                "Unentschieden"
-                if probs["draw"] >= probs["away_win"]
-                else "Auswärtssieg"
-            )
-        )
-        best_1x2_prob = max(probs["home_win"], probs["draw"], probs["away_win"])
-        # Grüner Hintergrund wie st.success(), größere Schrift
-        st.success(f"### 🎯 1X2\n\n" f"**{best_1x2}**\n\n" f"# {best_1x2_prob:.1f}%")
-
-    with col2:
-        # Over/Under 2.5 - separate Box
-        best_ou = "Over 2.5" if probs["over_25"] >= probs["under_25"] else "Under 2.5"
-        best_ou_prob = max(probs["over_25"], probs["under_25"])
-        st.success(
-            f"### 📈 Over/Under 2.5\n\n" f"**{best_ou}**\n\n" f"# {best_ou_prob:.1f}%"
-        )
-
-    with col3:
-        # BTTS - separate Box
-        best_btts = "BTTS Ja" if probs["btts_yes"] >= probs["btts_no"] else "BTTS Nein"
-        best_btts_prob = max(probs["btts_yes"], probs["btts_no"])
-        st.success(f"### ⚽ BTTS\n\n" f"**{best_btts}**\n\n" f"# {best_btts_prob:.1f}%")
-
-    with col4:
-        # Wahrscheinlichstes Ergebnis - größte Box
-        if result["scorelines"]:
-            predicted_score = result["predicted_score"]
-            score_prob = result["scorelines"][0][1]
-            st.success(
-                f"### 🏆 Wahrscheinlichstes Ergebnis\n\n"
-                f"# {predicted_score}\n\n"
-                f"**Wahrscheinlichkeit:**\n"
-                f"# {score_prob:.1f}%"
-            )
-
-    # ========================================================================
-    # ML PREDICTIONS - DIREKT HIER!
-    # ========================================================================
-    st.markdown("---")
-    _display_ml_predictions_inline(result)
-    
     # Export zu Google Sheets
     st.markdown("---")
     st.subheader("📤 Export zu Google Sheets")
