@@ -11,6 +11,7 @@ from config.constants import EXPORT_SHEET_ID
 def export_analysis_to_sheets(result: dict, actual_score: str = None) -> bool:
     """
     Exportiert Analyse-Ergebnis zu Google Sheets (Wettquoten Tipps)
+    Jetzt MIT ML Predictions und Konsens-Quoten!
 
     Args:
         result: Analyse-Ergebnis Dictionary
@@ -62,6 +63,9 @@ def export_analysis_to_sheets(result: dict, actual_score: str = None) -> bool:
             st.error("❌ Fehler beim Finden der passenden Zeile")
             return False
 
+        # ===================================================================
+        # ALTE PREDICTIONS (SMART-PRECISION)
+        # ===================================================================
         predicted_score = result.get("predicted_score", "")
         # Gewünschtes Format im Sheet: "1-0" statt "1:0"
         if isinstance(predicted_score, str):
@@ -69,52 +73,155 @@ def export_analysis_to_sheets(result: dict, actual_score: str = None) -> bool:
 
         probs = result["probabilities"]
 
-        # Prüfe Schwellenwerte
+        # Hole beste Predictions (IMMER, auch wenn unter Schwellenwert!)
         prob_1x2_home = probs["home_win"]
         prob_1x2_draw = probs["draw"]
         prob_1x2_away = probs["away_win"]
+        best_1x2_prob = max(prob_1x2_home, prob_1x2_draw, prob_1x2_away)
+
         prob_over = probs["over_25"]
         prob_under = probs["under_25"]
+        best_ou_prob = max(prob_over, prob_under)
+
         prob_btts_yes = probs["btts_yes"]
         prob_btts_no = probs["btts_no"]
-
-        # Bestimme beste 1X2 Option
-        best_1x2_prob = max(prob_1x2_home, prob_1x2_draw, prob_1x2_away)
-        prob_1x2_to_export = best_1x2_prob if best_1x2_prob >= 50 else None
-
-        # Bestimme beste O/U Option
-        best_ou_prob = max(prob_over, prob_under)
-        prob_ou_to_export = best_ou_prob if best_ou_prob >= 60 else None
-
-        # Bestimme beste BTTS Option
         best_btts_prob = max(prob_btts_yes, prob_btts_no)
-        prob_btts_to_export = best_btts_prob if best_btts_prob >= 60 else None
 
-        # Erstelle Update-Requests passend zum Template:
-        # B1/B11/B21...: Match-Name
-        # B4/B14/B24...: 1X2 % (>= 50%)
-        # B6/B16/B26...: O/U % (>= 60%)
-        # B8/B18/B28...: BTTS % (>= 60%)
-        # B9/B19/B29...: Predicted Score
-        # G1/G11/G21...: Tatsächliches Ergebnis (falls vorhanden)
+        # Bestimme welche Prediction (für Quote-Matching)
+        if best_1x2_prob == prob_1x2_home:
+            smart_1x2_prediction = "HOME"
+        elif best_1x2_prob == prob_1x2_draw:
+            smart_1x2_prediction = "DRAW"
+        else:
+            smart_1x2_prediction = "AWAY"
 
+        smart_ou_prediction = "OVER" if best_ou_prob == prob_over else "UNDER"
+        smart_btts_prediction = "YES" if best_btts_prob == prob_btts_yes else "NO"
+
+        # ===================================================================
+        # ML PREDICTIONS
+        # ===================================================================
+        ml_1x2_prob = None
+        ml_ou_prob = None
+        ml_btts_prob = None
+        ml_score = ""
+        ml_1x2_prediction = None
+        ml_ou_prediction = None
+        ml_btts_prediction = None
+
+        # Versuche ML Predictions zu laden
+        try:
+            from ml.football_ml_models import get_ml_models
+            from ml.scoreline_predictor import ScorelinePredictor
+            from ui.sheets_ml_integration import convert_match_data_to_features
+            from data import read_worksheet_text_by_id, DataParser
+
+            sheet_id = result.get('_sheet_id')
+            selected_tab = result.get('_selected_tab')
+
+            if sheet_id and selected_tab:
+                match_text = read_worksheet_text_by_id(sheet_id, selected_tab)
+                if match_text:
+                    parser = DataParser()
+                    match_data = parser.parse(match_text)
+                    features = convert_match_data_to_features(match_data)
+
+                    ml_models = get_ml_models()
+                    if ml_models.models_loaded:
+                        predictions = ml_models.predict_all(features, use_odds=True)
+
+                        # 1X2
+                        if '1x2' in predictions:
+                            ml_1x2_prob = predictions['1x2']['confidence']
+                            ml_1x2_prediction = predictions['1x2']['prediction']  # HOME WIN, DRAW, AWAY WIN
+
+                        # Over/Under
+                        if 'over_under' in predictions:
+                            ml_ou_prob = predictions['over_under']['confidence']
+                            pred = predictions['over_under']['prediction']
+                            ml_ou_prediction = "OVER" if "OVER" in pred else "UNDER"
+
+                        # BTTS
+                        if 'btts' in predictions:
+                            ml_btts_prob = predictions['btts']['confidence']
+                            pred = predictions['btts']['prediction']
+                            ml_btts_prediction = "YES" if "YES" in pred else "NO"
+
+                        # Score
+                        scoreline_pred = ScorelinePredictor()
+                        home_xg = features.get('home_avg_goals_scored_overall', 1.5) * 1.15
+                        away_xg = features.get('away_avg_goals_scored_overall', 1.3) * 0.95
+                        scorelines = scoreline_pred.predict_scorelines(home_xg, away_xg, top_n=5)
+                        if scorelines:
+                            ml_score = scorelines[0]['scoreline']
+
+        except Exception as e:
+            # Silent fail - ML Predictions optional
+            pass
+
+        # ===================================================================
+        # KONSENS-QUOTEN (nur wenn Schwellenwerte erreicht!)
+        # ===================================================================
+        # Hole Quoten aus extended_risk
+        odds_1x2 = result["extended_risk"]["1x2"].get("odds", 0.0)
+        odds_ou = result["extended_risk"]["over_under"]
+        odds_btts = result["extended_risk"]["btts"]
+
+        consensus_1x2_odds = ""
+        consensus_ou_odds = ""
+        consensus_btts_odds = ""
+
+        # 1X2: Konsens wenn ALTE ≥50% UND Predictions matchen
+        if best_1x2_prob >= 50 and ml_1x2_prediction:
+            # Normalisiere ML Prediction
+            ml_1x2_norm = ml_1x2_prediction.replace(" WIN", "").strip()
+            if smart_1x2_prediction == ml_1x2_norm:
+                consensus_1x2_odds = f"{odds_1x2:.2f}"
+
+        # Over/Under: Konsens wenn ALTE ≥60% UND Predictions matchen
+        if best_ou_prob >= 60 and ml_ou_prediction:
+            if smart_ou_prediction == ml_ou_prediction:
+                if smart_ou_prediction == "OVER":
+                    consensus_ou_odds = f"{odds_ou.get('over', {}).get('odds', 0.0):.2f}"
+                else:
+                    consensus_ou_odds = f"{odds_ou.get('under', {}).get('odds', 0.0):.2f}"
+
+        # BTTS: Konsens wenn ALTE ≥60% UND Predictions matchen
+        if best_btts_prob >= 60 and ml_btts_prediction:
+            if smart_btts_prediction == ml_btts_prediction:
+                if smart_btts_prediction == "YES":
+                    consensus_btts_odds = f"{odds_btts.get('yes', {}).get('odds', 0.0):.2f}"
+                else:
+                    consensus_btts_odds = f"{odds_btts.get('no', {}).get('odds', 0.0):.2f}"
+
+        # ===================================================================
+        # ERSTELLE UPDATES
+        # ===================================================================
         updates = [
+            # Match Name
             {"range": f"{sheet_tab_name}!B{next_row}", "values": [[match_name]]},
-            {
-                "range": f"{sheet_tab_name}!B{next_row + 3}",
-                "values": [[f"{prob_1x2_to_export:.1f}%" if prob_1x2_to_export else ""]],
-            },
-            {
-                "range": f"{sheet_tab_name}!B{next_row + 5}",
-                "values": [[f"{prob_ou_to_export:.1f}%" if prob_ou_to_export else ""]],
-            },
-            {
-                "range": f"{sheet_tab_name}!B{next_row + 7}",
-                "values": [[f"{prob_btts_to_export:.1f}%" if prob_btts_to_export else ""]],
-            },
-            {"range": f"{sheet_tab_name}!B{next_row + 8}", "values": [[predicted_score]]},
+            
+            # ZEILE 4: 1X2
+            {"range": f"{sheet_tab_name}!B{next_row + 3}", "values": [[f"{best_1x2_prob:.1f}%"]]},  # Alte
+            {"range": f"{sheet_tab_name}!C{next_row + 3}", "values": [[f"{ml_1x2_prob:.1f}%" if ml_1x2_prob else ""]]},  # ML
+            {"range": f"{sheet_tab_name}!E{next_row + 3}", "values": [[consensus_1x2_odds]]},  # Konsens Quote
+            
+            # ZEILE 6: Over/Under
+            {"range": f"{sheet_tab_name}!B{next_row + 5}", "values": [[f"{best_ou_prob:.1f}%"]]},  # Alte
+            {"range": f"{sheet_tab_name}!C{next_row + 5}", "values": [[f"{ml_ou_prob:.1f}%" if ml_ou_prob else ""]]},  # ML
+            {"range": f"{sheet_tab_name}!E{next_row + 5}", "values": [[consensus_ou_odds]]},  # Konsens Quote
+            
+            # ZEILE 8: BTTS
+            {"range": f"{sheet_tab_name}!B{next_row + 7}", "values": [[f"{best_btts_prob:.1f}%"]]},  # Alte
+            {"range": f"{sheet_tab_name}!C{next_row + 7}", "values": [[f"{ml_btts_prob:.1f}%" if ml_btts_prob else ""]]},  # ML
+            {"range": f"{sheet_tab_name}!E{next_row + 7}", "values": [[consensus_btts_odds]]},  # Konsens Quote
+            
+            # ZEILE 9: Scores
+            {"range": f"{sheet_tab_name}!B{next_row + 8}", "values": [[predicted_score]]},  # Alte
+            {"range": f"{sheet_tab_name}!C{next_row + 8}", "values": [[ml_score]]},  # ML
         ]
 
+        # Tatsächliches Ergebnis (optional)
         if actual_score:
             updates.append({"range": f"{sheet_tab_name}!G{next_row}", "values": [[actual_score]]})
 
