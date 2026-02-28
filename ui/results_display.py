@@ -530,6 +530,74 @@ def display_results(result: Dict):
     st.markdown("---")
     _display_ml_predictions_inline(result)
     
+    # ========================================================================
+    # EXPORT ZU GOOGLE SHEETS - DIREKT NACH KONSENS!
+    # ========================================================================
+    st.markdown("---")
+    st.subheader("📤 Export zu Google Sheets")
+
+    # Letztes Analyse-Ergebnis speichern (damit Export nach Rerun funktioniert)
+    st.session_state["_last_analysis_result"] = result
+
+    def _trigger_simple_export():
+        st.session_state["_do_export_simple"] = True
+
+    def _trigger_export_with_result():
+        h = st.session_state.get("exp_home_rd", 0)
+        a = st.session_state.get("exp_away_rd", 0)
+        st.session_state["_export_actual_score"] = f"{h}-{a}"
+        st.session_state["_do_export_with_result"] = True
+
+    col_export, col_actual = st.columns(2)
+    with col_export:
+        st.button(
+            "💾 Analyse exportieren",
+            use_container_width=True,
+            key="export_btn_simple_rd",
+            on_click=_trigger_simple_export,
+        )
+
+    with col_actual:
+        st.caption("Optional: Tatsächliches Ergebnis für Export")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.number_input("Heim", 0, 10, 0, key="exp_home_rd")
+        with c2:
+            st.number_input("Auswärts", 0, 10, 0, key="exp_away_rd")
+        st.button(
+            "📤 Mit Ergebnis exportieren",
+            use_container_width=True,
+            key="export_btn_with_result_rd",
+            on_click=_trigger_export_with_result,
+        )
+
+    # Exporte ausführen (klick-sicher nach Render)
+    export_result = st.session_state.get("_last_analysis_result")
+    if st.session_state.get("_do_export_simple"):
+        st.session_state["_do_export_simple"] = False
+        from models import export_analysis_to_sheets
+
+        with st.spinner("Exportiere Analyse..."):
+            ok = export_analysis_to_sheets(export_result)
+        if ok:
+            st.success("✅ Analyse exportiert!")
+            st.balloons()
+        else:
+            st.error("❌ Export fehlgeschlagen")
+
+    if st.session_state.get("_do_export_with_result"):
+        st.session_state["_do_export_with_result"] = False
+        actual_score = st.session_state.get("_export_actual_score")
+        from models import export_analysis_to_sheets
+
+        with st.spinner(f"Exportiere mit Ergebnis {actual_score}..."):
+            ok = export_analysis_to_sheets(export_result, actual_score)
+        if ok:
+            st.success(f"✅ Mit Ergebnis {actual_score} exportiert!")
+            st.balloons()
+        else:
+            st.error("❌ Export fehlgeschlagen")
+    
     st.markdown("---")
 
     # Alarm-System
@@ -825,72 +893,6 @@ def display_results(result: Dict):
         }
     )
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
-
-    # Export zu Google Sheets
-    st.markdown("---")
-    st.subheader("📤 Export zu Google Sheets")
-
-    # Letztes Analyse-Ergebnis speichern (damit Export nach Rerun funktioniert)
-    st.session_state["_last_analysis_result"] = result
-
-    def _trigger_simple_export():
-        st.session_state["_do_export_simple"] = True
-
-    def _trigger_export_with_result():
-        h = st.session_state.get("exp_home_rd", 0)
-        a = st.session_state.get("exp_away_rd", 0)
-        st.session_state["_export_actual_score"] = f"{h}-{a}"
-        st.session_state["_do_export_with_result"] = True
-
-    col_export, col_actual = st.columns(2)
-    with col_export:
-        st.button(
-            "💾 Analyse exportieren",
-            use_container_width=True,
-            key="export_btn_simple_rd",
-            on_click=_trigger_simple_export,
-        )
-
-    with col_actual:
-        st.caption("Optional: Tatsächliches Ergebnis für Export")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.number_input("Heim", 0, 10, 0, key="exp_home_rd")
-        with c2:
-            st.number_input("Auswärts", 0, 10, 0, key="exp_away_rd")
-        st.button(
-            "📤 Mit Ergebnis exportieren",
-            use_container_width=True,
-            key="export_btn_with_result_rd",
-            on_click=_trigger_export_with_result,
-        )
-
-    # Exporte ausführen (klick-sicher nach Render)
-    export_result = st.session_state.get("_last_analysis_result")
-    if st.session_state.get("_do_export_simple"):
-        st.session_state["_do_export_simple"] = False
-        from models import export_analysis_to_sheets
-
-        with st.spinner("Exportiere Analyse..."):
-            ok = export_analysis_to_sheets(export_result)
-        if ok:
-            st.success("✅ Analyse exportiert!")
-            st.balloons()
-        else:
-            st.error("❌ Export fehlgeschlagen")
-
-    if st.session_state.get("_do_export_with_result"):
-        st.session_state["_do_export_with_result"] = False
-        actual_score = st.session_state.get("_export_actual_score")
-        from models import export_analysis_to_sheets
-
-        with st.spinner(f"Exportiere mit Ergebnis {actual_score}..."):
-            ok = export_analysis_to_sheets(export_result, actual_score)
-        if ok:
-            st.success(f"✅ Mit Ergebnis {actual_score} exportiert!")
-            st.balloons()
-        else:
-            st.error("❌ Export fehlgeschlagen")
 
     # Visualisierungen
     st.markdown("---")
