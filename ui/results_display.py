@@ -46,17 +46,24 @@ def _display_ml_predictions_inline(result: Dict):
             return
         
         # Versuche Match aus Google Sheets zu laden
-        match_data = _load_match_from_sheets(home_team, away_team, match_date)
+        with st.spinner(f"🔍 Suche '{home_team} vs {away_team}' in Google Sheets..."):
+            match_data = _load_match_from_sheets(home_team, away_team, match_date)
         
         if not match_data:
             # Fallback: Zeige Info dass Sheets-Daten benötigt werden
             st.info(f"""
-            💡 **Für ML Predictions wird Google Sheets benötigt**
+            💡 **Match nicht in Google Sheets gefunden**
             
-            Match: {home_team} vs {away_team}
+            Gesucht: **{home_team} vs {away_team}**
+            Datum: {match_date or 'N/A'}
             
-            **Option 1:** Geh zu Tab 6 und wähle das Match aus der Liste
-            **Option 2:** Stelle sicher dass Match-Daten in Google Sheets vorhanden sind
+            **Mögliche Gründe:**
+            - Match-Daten noch nicht in Sheets
+            - Team-Namen unterscheiden sich (z.B. "FC Augsburg" vs "Augsburg")
+            - Match in anderem Tabellenblatt
+            
+            **Für vollständige ML Predictions:**
+            → Nutze Tab 6 "ML Predictions" und wähle Match aus der Liste
             """)
             return
         
@@ -214,28 +221,77 @@ def _load_match_from_sheets(home_team: str, away_team: str, match_date: str):
 def _match_names_in_tab(tab_name: str, home_team: str, away_team: str) -> bool:
     """
     Prüft ob Tab-Name die Team-Namen enthält
+    Sehr tolerant für verschiedene Schreibweisen
     """
-    tab_lower = tab_name.lower()
-    home_lower = home_team.lower()
-    away_lower = away_team.lower()
+    def normalize_team_name(name: str) -> str:
+        """Normalisiert Team-Namen für Vergleich"""
+        name = name.lower().strip()
+        
+        # Entferne häufige Präfixe und Suffixe
+        removals = [
+            'fc ', ' fc', 'cf ', ' cf', 'sc ', ' sc', 'sv ', ' sv',
+            'ac ', ' ac', 'rc ', ' rc', 'asc ', ' asc',
+            'bfc ', ' bfc', 'ssc ', ' ssc',
+            'united', 'city', 'town', 'athletic', 'rovers',
+            'wanderers', 'albion', 'county', 'borough',
+            '1. ', '1.fc ', 'fc.', 'e.v.', ' ii', ' iii',
+            'vfl ', ' vfl', 'tsv ', ' tsv', 'sv ', ' sv'
+        ]
+        
+        for removal in removals:
+            name = name.replace(removal, ' ')
+        
+        # Entferne Zahlen am Anfang
+        import re
+        name = re.sub(r'^\d+\.?\s*', '', name)
+        
+        # Entferne mehrfache Leerzeichen
+        name = ' '.join(name.split())
+        
+        return name.strip()
     
-    # Entferne häufige Suffixe
-    for suffix in [' fc', ' cf', ' sc', ' sv', ' united', ' city']:
-        home_lower = home_lower.replace(suffix, '').strip()
-        away_lower = away_lower.replace(suffix, '').strip()
-        tab_lower = tab_lower.replace(suffix, '').strip()
+    # Normalisiere alle Namen
+    tab_normalized = normalize_team_name(tab_name)
+    home_normalized = normalize_team_name(home_team)
+    away_normalized = normalize_team_name(away_team)
     
-    # Check verschiedene Formate
-    # Format 1: "Home vs Away"
-    if home_lower in tab_lower and away_lower in tab_lower:
+    # CHECK 1: Volle Namen
+    if home_normalized in tab_normalized and away_normalized in tab_normalized:
         return True
     
-    # Format 2: Verkürzte Namen
-    home_short = home_lower.split()[0] if ' ' in home_lower else home_lower
-    away_short = away_lower.split()[0] if ' ' in away_lower else away_lower
+    # CHECK 2: Erste Wörter (Hauptname)
+    home_first = home_normalized.split()[0] if home_normalized else ''
+    away_first = away_normalized.split()[0] if away_normalized else ''
     
-    if home_short in tab_lower and away_short in tab_lower:
-        return True
+    if len(home_first) >= 4 and len(away_first) >= 4:  # Mindestens 4 Buchstaben
+        if home_first in tab_normalized and away_first in tab_normalized:
+            return True
+    
+    # CHECK 3: Enthält beide Kernwörter (längste Wörter)
+    def get_core_word(name: str) -> str:
+        """Findet das längste Wort (meist der Hauptname)"""
+        words = name.split()
+        if not words:
+            return ''
+        # Ignoriere sehr kurze Wörter
+        words = [w for w in words if len(w) >= 4]
+        return max(words, key=len) if words else words[0] if words else ''
+    
+    home_core = get_core_word(home_normalized)
+    away_core = get_core_word(away_normalized)
+    
+    if home_core and away_core:
+        if home_core in tab_normalized and away_core in tab_normalized:
+            return True
+    
+    # CHECK 4: Teilstring-Match mit mindestens 5 Zeichen
+    if len(home_normalized) >= 5 and len(away_normalized) >= 5:
+        # Nimm erste 5+ Zeichen
+        home_prefix = home_normalized[:max(5, len(home_normalized)//2)]
+        away_prefix = away_normalized[:max(5, len(away_normalized)//2)]
+        
+        if home_prefix in tab_normalized and away_prefix in tab_normalized:
+            return True
     
     return False
 
