@@ -660,6 +660,9 @@ def main():
                         else:
                             result = analyze_match_v47_ml(match_data)
                             result = choose_consistent_predicted_score(result)
+                            # Speichere sheet_id und tab für ML Predictions
+                            result['_sheet_id'] = sheet_id
+                            result['_selected_tab'] = selected_tab
                             st.session_state.current_match_result[match_key] = result
                         # Falls aus Cache geladen, Score ggf. anpassen
                         result = choose_consistent_predicted_score(result)
