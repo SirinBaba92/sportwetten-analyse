@@ -90,7 +90,7 @@ def _display_ml_predictions_inline(result: Dict):
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            # 1X2
+            # 1X2 + Quote
             if '1x2' in predictions:
                 pred_1x2 = predictions['1x2']
                 label_map = {
@@ -99,36 +99,62 @@ def _display_ml_predictions_inline(result: Dict):
                     'AWAY WIN': 'Auswärtssieg'
                 }
                 pred_label = label_map.get(pred_1x2['prediction'], pred_1x2['prediction'])
+                
+                # Hole Quote basierend auf Prediction
+                if pred_1x2['prediction'] == 'HOME WIN':
+                    odds = features.get('odds_home', 0.0)
+                elif pred_1x2['prediction'] == 'DRAW':
+                    odds = features.get('odds_draw', 0.0)
+                else:
+                    odds = features.get('odds_away', 0.0)
+                
                 st.success(
                     f"### 🎯 1X2\n\n"
                     f"**{pred_label}**\n\n"
-                    f"# {pred_1x2['confidence']:.1f}%"
+                    f"# {pred_1x2['confidence']:.1f}%\n"
+                    f"**Quote: {odds:.2f}**"
                 )
         
         with col2:
-            # Over/Under
+            # Over/Under + Quote
             if 'over_under' in predictions:
                 pred_ou = predictions['over_under']
+                
+                # Hole Quote
+                if 'OVER' in pred_ou['prediction']:
+                    odds = features.get('odds_over25', 0.0)
+                else:
+                    odds = features.get('odds_under25', 0.0)
+                
                 st.success(
                     f"### 📈 Over/Under 2.5\n\n"
                     f"**{pred_ou['prediction']}**\n\n"
-                    f"# {pred_ou['confidence']:.1f}%"
+                    f"# {pred_ou['confidence']:.1f}%\n"
+                    f"**Quote: {odds:.2f}**"
                 )
         
         with col3:
-            # BTTS
+            # BTTS + Quote
             if 'btts' in predictions:
                 pred_btts = predictions['btts']
                 label_map = {'BTTS YES': 'BTTS Ja', 'BTTS NO': 'BTTS Nein'}
                 pred_label = label_map.get(pred_btts['prediction'], pred_btts['prediction'])
+                
+                # Hole Quote
+                if pred_btts['prediction'] == 'BTTS YES':
+                    odds = features.get('odds_btts_yes', 0.0)
+                else:
+                    odds = features.get('odds_btts_no', 0.0)
+                
                 st.success(
                     f"### ⚽ BTTS\n\n"
                     f"**{pred_label}**\n\n"
-                    f"# {pred_btts['confidence']:.1f}%"
+                    f"# {pred_btts['confidence']:.1f}%\n"
+                    f"**Quote: {odds:.2f}**"
                 )
         
         with col4:
-            # Wahrscheinlichstes Ergebnis
+            # Wahrscheinlichstes Ergebnis (keine Quote)
             if best_scoreline:
                 st.success(
                     f"### 🏆 Wahrscheinlichstes Ergebnis\n\n"
@@ -383,7 +409,7 @@ def display_results(result: Dict):
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        # 1X2 mit größerer Schrift
+        # 1X2 mit größerer Schrift + Quote
         best_1x2 = (
             "Heimsieg"
             if probs["home_win"] >= probs["draw"]
@@ -395,25 +421,58 @@ def display_results(result: Dict):
             )
         )
         best_1x2_prob = max(probs["home_win"], probs["draw"], probs["away_win"])
-        # Grüner Hintergrund wie st.success(), größere Schrift
-        st.success(f"### 🎯 1X2\n\n" f"**{best_1x2}**\n\n" f"# {best_1x2_prob:.1f}%")
+        
+        # Hole Quote
+        risk_1x2 = result["extended_risk"]["1x2"]
+        odds_1x2 = risk_1x2.get("odds", 0.0)
+        
+        st.success(
+            f"### 🎯 1X2\n\n"
+            f"**{best_1x2}**\n\n"
+            f"# {best_1x2_prob:.1f}%\n"
+            f"**Quote: {odds_1x2:.2f}**"
+        )
 
     with col2:
-        # Over/Under 2.5 - separate Box
+        # Over/Under 2.5 - separate Box + Quote
         best_ou = "Over 2.5" if probs["over_25"] >= probs["under_25"] else "Under 2.5"
         best_ou_prob = max(probs["over_25"], probs["under_25"])
+        
+        # Hole Quote
+        risk_ou = result["extended_risk"]["over_under"]
+        if best_ou == "Over 2.5":
+            odds_ou = risk_ou.get("over", {}).get("odds", 0.0)
+        else:
+            odds_ou = risk_ou.get("under", {}).get("odds", 0.0)
+        
         st.success(
-            f"### 📈 Over/Under 2.5\n\n" f"**{best_ou}**\n\n" f"# {best_ou_prob:.1f}%"
+            f"### 📈 Over/Under 2.5\n\n"
+            f"**{best_ou}**\n\n"
+            f"# {best_ou_prob:.1f}%\n"
+            f"**Quote: {odds_ou:.2f}**"
         )
 
     with col3:
-        # BTTS - separate Box
+        # BTTS - separate Box + Quote
         best_btts = "BTTS Ja" if probs["btts_yes"] >= probs["btts_no"] else "BTTS Nein"
         best_btts_prob = max(probs["btts_yes"], probs["btts_no"])
-        st.success(f"### ⚽ BTTS\n\n" f"**{best_btts}**\n\n" f"# {best_btts_prob:.1f}%")
+        
+        # Hole Quote
+        risk_btts = result["extended_risk"]["btts"]
+        if best_btts == "BTTS Ja":
+            odds_btts = risk_btts.get("yes", {}).get("odds", 0.0)
+        else:
+            odds_btts = risk_btts.get("no", {}).get("odds", 0.0)
+        
+        st.success(
+            f"### ⚽ BTTS\n\n"
+            f"**{best_btts}**\n\n"
+            f"# {best_btts_prob:.1f}%\n"
+            f"**Quote: {odds_btts:.2f}**"
+        )
 
     with col4:
-        # Wahrscheinlichstes Ergebnis - größte Box
+        # Wahrscheinlichstes Ergebnis - größte Box (keine Quote für Scoreline)
         if result["scorelines"]:
             predicted_score = result["predicted_score"]
             score_prob = result["scorelines"][0][1]
