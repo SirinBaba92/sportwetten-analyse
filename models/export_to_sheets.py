@@ -175,13 +175,94 @@ def export_analysis_to_sheets(result: dict, actual_score: str = None) -> bool:
                             # Label erstellen
                             ml_btts_label = "Yes" if "YES" in pred else "No"
 
-                        # Score
+                        # Score - GLEICHE Logik wie Tab 1!
                         scoreline_pred = ScorelinePredictor()
-                        home_xg = features.get('home_avg_goals_scored_overall', 1.5) * 1.15
-                        away_xg = features.get('away_avg_goals_scored_overall', 1.3) * 0.95
-                        scorelines = scoreline_pred.predict_scorelines(home_xg, away_xg, top_n=5)
-                        if scorelines:
-                            ml_score = scorelines[0]['scoreline']
+                        
+                        # xG aus match_data (wie Tab 6)
+                        home_xg = match_data.home_team.goals_scored_per_match if hasattr(match_data.home_team, 'goals_scored_per_match') else 1.5
+                        away_xg = match_data.away_team.goals_scored_per_match if hasattr(match_data.away_team, 'goals_scored_per_match') else 1.3
+                        
+                        # Generiere Scorelines
+                        all_scorelines = scoreline_pred.predict_scorelines(home_xg, away_xg, top_n=20)
+                        
+                        # Bestimme ML Markets für Scoreline Match
+                        x2_pred = ml_1x2_prediction.replace(' WIN', '').replace('DRAW', 'DRAW') if ml_1x2_prediction else 'HOME'
+                        ou_pred = ml_ou_prediction if ml_ou_prediction else 'OVER'
+                        btts_pred = ml_btts_prediction if ml_btts_prediction else 'NO'
+                        
+                        # Finde passendes Scoreline (wie Tab 1/6)
+                        best_scoreline = scoreline_pred.get_most_likely_scoreline_for_markets(
+                            x2_pred, ou_pred, btts_pred, all_scorelines
+                        )
+                        
+                        # Fallback wenn kein Match
+                        if not best_scoreline and all_scorelines:
+                            # Nutze choose_consistent_predicted_score
+                            try:
+                                from app import choose_consistent_predicted_score
+                                
+                                ml_probs = {}
+                                if '1x2' in predictions:
+                                    pred = predictions['1x2']['prediction']
+                                    conf = predictions['1x2']['confidence']
+                                    if 'HOME' in pred:
+                                        ml_probs['home_win'] = conf
+                                        ml_probs['draw'] = (100 - conf) / 2
+                                        ml_probs['away_win'] = (100 - conf) / 2
+                                    elif 'DRAW' in pred:
+                                        ml_probs['draw'] = conf
+                                        ml_probs['home_win'] = (100 - conf) / 2
+                                        ml_probs['away_win'] = (100 - conf) / 2
+                                    else:
+                                        ml_probs['away_win'] = conf
+                                        ml_probs['home_win'] = (100 - conf) / 2
+                                        ml_probs['draw'] = (100 - conf) / 2
+                                
+                                if 'over_under' in predictions:
+                                    pred = predictions['over_under']['prediction']
+                                    conf = predictions['over_under']['confidence']
+                                    if 'OVER' in pred:
+                                        ml_probs['over_25'] = conf
+                                        ml_probs['under_25'] = 100 - conf
+                                    else:
+                                        ml_probs['under_25'] = conf
+                                        ml_probs['over_25'] = 100 - conf
+                                
+                                if 'btts' in predictions:
+                                    pred = predictions['btts']['prediction']
+                                    conf = predictions['btts']['confidence']
+                                    if 'YES' in pred:
+                                        ml_probs['btts_yes'] = conf
+                                        ml_probs['btts_no'] = 100 - conf
+                                    else:
+                                        ml_probs['btts_no'] = conf
+                                        ml_probs['btts_yes'] = 100 - conf
+                                
+                                temp_result = {
+                                    'scorelines': [(s['scoreline'], s['probability']) for s in all_scorelines],
+                                    'probabilities': ml_probs
+                                }
+                                
+                                temp_result = choose_consistent_predicted_score(temp_result)
+                                consistent_score = temp_result.get('predicted_score', '')
+                                
+                                if consistent_score:
+                                    for s in all_scorelines:
+                                        if s['scoreline'] == consistent_score:
+                                            best_scoreline = s
+                                            break
+                                    if not best_scoreline:
+                                        best_scoreline = {'scoreline': consistent_score}
+                            except:
+                                pass
+                        
+                        # Final Fallback
+                        if not best_scoreline and all_scorelines:
+                            best_scoreline = all_scorelines[0]
+                        
+                        # Setze ml_score
+                        if best_scoreline:
+                            ml_score = best_scoreline['scoreline']
 
         except Exception as e:
             # Silent fail - ML Predictions optional
