@@ -86,52 +86,27 @@ def _display_ml_predictions_inline(result: Dict):
         scorelines = scoreline_pred.predict_scorelines(home_xg, away_xg, top_n=5)
         
         # CONSISTENCY CHECK - wähle konsistentes Scoreline!
+        # WICHTIG: Nutze ALTE (SMART-PRECISION) Predictions für Consistency!
         best_scoreline = None
-        if scorelines and predictions:
-            # Erstelle temporäres result dict für consistency check
+        if scorelines:
+            # Hole ALTE Predictions aus result
+            probs = result.get('probabilities', {})
+            
+            # Erstelle temp_result für consistency check mit ALTEN Predictions
             temp_result = {
                 'scorelines': [(s['scoreline'], s['probability']) for s in scorelines],
-                'probabilities': {}
+                'probabilities': {
+                    'home_win': probs.get('home_win', 0),
+                    'draw': probs.get('draw', 0),
+                    'away_win': probs.get('away_win', 0),
+                    'over_25': probs.get('over_25', 0),
+                    'under_25': probs.get('under_25', 0),
+                    'btts_yes': probs.get('btts_yes', 0),
+                    'btts_no': probs.get('btts_no', 0)
+                }
             }
             
-            # Füge ML Predictions als Probabilities hinzu
-            if '1x2' in predictions:
-                pred = predictions['1x2']['prediction']
-                conf = predictions['1x2']['confidence']
-                if 'HOME' in pred:
-                    temp_result['probabilities']['home_win'] = conf
-                    temp_result['probabilities']['draw'] = (100 - conf) / 2
-                    temp_result['probabilities']['away_win'] = (100 - conf) / 2
-                elif 'DRAW' in pred:
-                    temp_result['probabilities']['draw'] = conf
-                    temp_result['probabilities']['home_win'] = (100 - conf) / 2
-                    temp_result['probabilities']['away_win'] = (100 - conf) / 2
-                else:
-                    temp_result['probabilities']['away_win'] = conf
-                    temp_result['probabilities']['home_win'] = (100 - conf) / 2
-                    temp_result['probabilities']['draw'] = (100 - conf) / 2
-            
-            if 'over_under' in predictions:
-                pred = predictions['over_under']['prediction']
-                conf = predictions['over_under']['confidence']
-                if 'OVER' in pred:
-                    temp_result['probabilities']['over_25'] = conf
-                    temp_result['probabilities']['under_25'] = 100 - conf
-                else:
-                    temp_result['probabilities']['under_25'] = conf
-                    temp_result['probabilities']['over_25'] = 100 - conf
-            
-            if 'btts' in predictions:
-                pred = predictions['btts']['prediction']
-                conf = predictions['btts']['confidence']
-                if 'YES' in pred:
-                    temp_result['probabilities']['btts_yes'] = conf
-                    temp_result['probabilities']['btts_no'] = 100 - conf
-                else:
-                    temp_result['probabilities']['btts_no'] = conf
-                    temp_result['probabilities']['btts_yes'] = 100 - conf
-            
-            # Nutze consistency checker
+            # Nutze consistency checker mit ALTEN Predictions
             try:
                 from app import choose_consistent_predicted_score
                 temp_result = choose_consistent_predicted_score(temp_result)
@@ -142,13 +117,14 @@ def _display_ml_predictions_inline(result: Dict):
                         if s['scoreline'] == consistent_score:
                             best_scoreline = s
                             break
-                    # Falls nicht gefunden, nutze das erste
-                    if not best_scoreline and scorelines:
+                    # Falls nicht gefunden, erstelle es
+                    if not best_scoreline:
                         best_scoreline = {'scoreline': consistent_score, 'probability': 0.0}
             except:
                 # Fallback: erstes Scoreline
                 best_scoreline = scorelines[0] if scorelines else None
-        elif scorelines:
+        
+        if not best_scoreline and scorelines:
             best_scoreline = scorelines[0]
         
         # Display im gleichen 4-Spalten Format
