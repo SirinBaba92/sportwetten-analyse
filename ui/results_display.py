@@ -85,6 +85,9 @@ def _display_ml_predictions_inline(result: Dict):
         # Generiere Scorelines
         scorelines = scoreline_pred.predict_scorelines(home_xg, away_xg, top_n=5)
         
+        # DEBUG: Zeige generierte Scorelines
+        st.caption(f"🔍 DEBUG: Generierte ML Scorelines: {[s['scoreline'] for s in scorelines]}")
+        
         # CONSISTENCY CHECK - wähle konsistentes Scoreline!
         # WICHTIG: Nutze ALTE (SMART-PRECISION) Predictions für Consistency!
         best_scoreline = None
@@ -109,8 +112,16 @@ def _display_ml_predictions_inline(result: Dict):
             # Nutze consistency checker mit ALTEN Predictions
             try:
                 from app import choose_consistent_predicted_score
+                
+                # DEBUG: Zeige Input
+                st.caption(f"🔍 DEBUG: ALTE Probs: H={probs.get('home_win', 0):.1f}%, O={probs.get('over_25', 0):.1f}%, BTTS_NO={probs.get('btts_no', 0):.1f}%")
+                
                 temp_result = choose_consistent_predicted_score(temp_result)
                 consistent_score = temp_result.get('predicted_score', '')
+                
+                # DEBUG: Zeige Output
+                st.caption(f"🔍 DEBUG: Consistency Check ergab: {consistent_score}")
+                
                 if consistent_score:
                     # Finde das passende Scoreline aus der Liste
                     for s in scorelines:
