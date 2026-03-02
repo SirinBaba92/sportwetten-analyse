@@ -88,23 +88,42 @@ def _display_ml_predictions_inline(result: Dict):
         # DEBUG
         st.caption(f"🔍 DEBUG: xG={home_xg:.2f}/{away_xg:.2f}, Top 5: {[s['scoreline'] for s in all_scorelines[:5]]}")
         
-        # Hole ALTE Predictions für Consistency Check
-        probs = result.get('probabilities', {})
-        
-        # Bestimme beste ALTE Predictions
-        best_1x2_prob = max(probs.get('home_win', 0), probs.get('draw', 0), probs.get('away_win', 0))
-        if best_1x2_prob == probs.get('home_win', 0):
-            x2_pred = 'HOME'
-        elif best_1x2_prob == probs.get('draw', 0):
-            x2_pred = 'DRAW'
+        # Bestimme ML Predictions für Consistency Check
+        if '1x2' in predictions:
+            ml_1x2 = predictions['1x2']['prediction'].replace(' WIN', '').replace('DRAW', 'DRAW')
+            if 'HOME' in ml_1x2:
+                x2_pred = 'HOME'
+            elif 'DRAW' in ml_1x2:
+                x2_pred = 'DRAW'
+            else:
+                x2_pred = 'AWAY'
         else:
-            x2_pred = 'AWAY'
+            # Fallback: ALTE
+            probs = result.get('probabilities', {})
+            best_1x2_prob = max(probs.get('home_win', 0), probs.get('draw', 0), probs.get('away_win', 0))
+            if best_1x2_prob == probs.get('home_win', 0):
+                x2_pred = 'HOME'
+            elif best_1x2_prob == probs.get('draw', 0):
+                x2_pred = 'DRAW'
+            else:
+                x2_pred = 'AWAY'
         
-        ou_pred = 'OVER' if probs.get('over_25', 0) >= probs.get('under_25', 0) else 'UNDER'
-        btts_pred = 'YES' if probs.get('btts_yes', 0) >= probs.get('btts_no', 0) else 'NO'
+        if 'over_under' in predictions:
+            ou_pred = 'OVER' if 'OVER' in predictions['over_under']['prediction'] else 'UNDER'
+        else:
+            # Fallback: ALTE
+            probs = result.get('probabilities', {})
+            ou_pred = 'OVER' if probs.get('over_25', 0) >= probs.get('under_25', 0) else 'UNDER'
+        
+        if 'btts' in predictions:
+            btts_pred = 'YES' if 'YES' in predictions['btts']['prediction'] else 'NO'
+        else:
+            # Fallback: ALTE
+            probs = result.get('probabilities', {})
+            btts_pred = 'YES' if probs.get('btts_yes', 0) >= probs.get('btts_no', 0) else 'NO'
         
         # DEBUG
-        st.caption(f"🔍 DEBUG: ALTE Markets: {x2_pred}, {ou_pred}, BTTS {btts_pred}")
+        st.caption(f"🔍 DEBUG: ML Markets: {x2_pred}, {ou_pred}, BTTS {btts_pred}")
         
         # Nutze GLEICHE Funktion wie Tab 6!
         best_scoreline = scoreline_pred.get_most_likely_scoreline_for_markets(
@@ -117,13 +136,53 @@ def _display_ml_predictions_inline(result: Dict):
         else:
             st.caption(f"🔍 DEBUG: Kein perfektes Match! Nutze Soft-Optimierung...")
             
-            # FALLBACK: Nutze choose_consistent_predicted_score für Soft-Optimierung
+            # FALLBACK: Nutze choose_consistent_predicted_score
+            # ABER mit ML Predictions als Probabilities!
             try:
                 from app import choose_consistent_predicted_score
                 
+                # Erstelle Pseudo-Probabilities aus ML Predictions
+                ml_probs = {}
+                
+                if '1x2' in predictions:
+                    pred = predictions['1x2']['prediction']
+                    conf = predictions['1x2']['confidence']
+                    if 'HOME' in pred:
+                        ml_probs['home_win'] = conf
+                        ml_probs['draw'] = (100 - conf) / 2
+                        ml_probs['away_win'] = (100 - conf) / 2
+                    elif 'DRAW' in pred:
+                        ml_probs['draw'] = conf
+                        ml_probs['home_win'] = (100 - conf) / 2
+                        ml_probs['away_win'] = (100 - conf) / 2
+                    else:
+                        ml_probs['away_win'] = conf
+                        ml_probs['home_win'] = (100 - conf) / 2
+                        ml_probs['draw'] = (100 - conf) / 2
+                
+                if 'over_under' in predictions:
+                    pred = predictions['over_under']['prediction']
+                    conf = predictions['over_under']['confidence']
+                    if 'OVER' in pred:
+                        ml_probs['over_25'] = conf
+                        ml_probs['under_25'] = 100 - conf
+                    else:
+                        ml_probs['under_25'] = conf
+                        ml_probs['over_25'] = 100 - conf
+                
+                if 'btts' in predictions:
+                    pred = predictions['btts']['prediction']
+                    conf = predictions['btts']['confidence']
+                    if 'YES' in pred:
+                        ml_probs['btts_yes'] = conf
+                        ml_probs['btts_no'] = 100 - conf
+                    else:
+                        ml_probs['btts_no'] = conf
+                        ml_probs['btts_yes'] = 100 - conf
+                
                 temp_result = {
                     'scorelines': [(s['scoreline'], s['probability']) for s in all_scorelines],
-                    'probabilities': probs
+                    'probabilities': ml_probs  # ← ML Predictions!
                 }
                 
                 temp_result = choose_consistent_predicted_score(temp_result)
@@ -141,7 +200,8 @@ def _display_ml_predictions_inline(result: Dict):
                     # Falls nicht gefunden, erstelle es
                     if not best_scoreline:
                         best_scoreline = {'scoreline': consistent_score, 'probability': 0.0}
-            except:
+            except Exception as e:
+                st.caption(f"🔍 DEBUG: Fallback Error: {e}")
                 pass
             
             # Final Fallback
