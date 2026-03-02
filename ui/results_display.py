@@ -78,27 +78,16 @@ def _display_ml_predictions_inline(result: Dict):
         # Erstelle Scoreline Predictor
         scoreline_pred = ScorelinePredictor()
         
-        # Berechne xG aus ALTEN (SMART-PRECISION) Werten!
-        # Nicht aus ML Features, sondern aus result!
-        match_info = result.get('match_info', {})
+        # Berechne xG GENAU WIE TAB 6!
+        # Nutze goals_scored_per_match aus match_data
+        old_xg_home = match_data.home_team.goals_scored_per_match if hasattr(match_data.home_team, 'goals_scored_per_match') else 1.5
+        old_xg_away = match_data.away_team.goals_scored_per_match if hasattr(match_data.away_team, 'goals_scored_per_match') else 1.3
         
-        # Hole ALTE xG-Werte aus result
-        # Falls nicht vorhanden, berechne aus μ-Werten
-        old_xg_home = result.get('xg', {}).get('home')
-        old_xg_away = result.get('xg', {}).get('away')
-        
-        if old_xg_home is None or old_xg_away is None:
-            # Fallback: Berechne aus μ-Werten
-            mu_home = result.get('mu', {}).get('home', 1.5)
-            mu_away = result.get('mu', {}).get('away', 1.3)
-            old_xg_home = mu_home
-            old_xg_away = mu_away
-        
-        # Generiere Scorelines mit ALTEN xG-Werten
-        scorelines = scoreline_pred.predict_scorelines(old_xg_home, old_xg_away, top_n=10)
+        # Generiere Scorelines mit GLEICHEN xG wie Tab 6
+        scorelines = scoreline_pred.predict_scorelines(old_xg_home, old_xg_away, top_n=20)
         
         # DEBUG: Zeige generierte Scorelines
-        st.caption(f"🔍 DEBUG: Generierte Scorelines (ALTE xG={old_xg_home:.2f}/{old_xg_away:.2f}): {[s['scoreline'] for s in scorelines[:5]]}")
+        st.caption(f"🔍 DEBUG: xG={old_xg_home:.2f}/{old_xg_away:.2f}, Top 5: {[s['scoreline'] for s in scorelines[:5]]}")
         
         # CONSISTENCY CHECK - wähle konsistentes Scoreline!
         # WICHTIG: Nutze ALTE (SMART-PRECISION) Predictions für Consistency!
