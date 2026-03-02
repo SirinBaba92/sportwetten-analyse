@@ -85,9 +85,6 @@ def _display_ml_predictions_inline(result: Dict):
         # Generiere Scorelines (wie Tab 6)
         all_scorelines = scoreline_pred.predict_scorelines(home_xg, away_xg, top_n=20)
         
-        # DEBUG
-        st.caption(f"🔍 DEBUG: xG={home_xg:.2f}/{away_xg:.2f}, Top 5: {[s['scoreline'] for s in all_scorelines[:5]]}")
-        
         # Bestimme ML Predictions für Consistency Check
         if '1x2' in predictions:
             ml_1x2 = predictions['1x2']['prediction'].replace(' WIN', '').replace('DRAW', 'DRAW')
@@ -122,22 +119,14 @@ def _display_ml_predictions_inline(result: Dict):
             probs = result.get('probabilities', {})
             btts_pred = 'YES' if probs.get('btts_yes', 0) >= probs.get('btts_no', 0) else 'NO'
         
-        # DEBUG
-        st.caption(f"🔍 DEBUG: ML Markets: {x2_pred}, {ou_pred}, BTTS {btts_pred}")
-        
         # Nutze GLEICHE Funktion wie Tab 6!
         best_scoreline = scoreline_pred.get_most_likely_scoreline_for_markets(
             x2_pred, ou_pred, btts_pred, all_scorelines
         )
         
-        # DEBUG
-        if best_scoreline:
-            st.caption(f"🔍 DEBUG: Best match (Tab 6 Methode): {best_scoreline['scoreline']}")
-        else:
-            st.caption(f"🔍 DEBUG: Kein perfektes Match! Nutze Soft-Optimierung...")
-            
-            # FALLBACK: Nutze choose_consistent_predicted_score
-            # ABER mit ML Predictions als Probabilities!
+        # Fallback wenn kein perfektes Match
+        if not best_scoreline:
+            # Nutze choose_consistent_predicted_score für Soft-Optimierung
             try:
                 from app import choose_consistent_predicted_score
                 
@@ -182,13 +171,11 @@ def _display_ml_predictions_inline(result: Dict):
                 
                 temp_result = {
                     'scorelines': [(s['scoreline'], s['probability']) for s in all_scorelines],
-                    'probabilities': ml_probs  # ← ML Predictions!
+                    'probabilities': ml_probs
                 }
                 
                 temp_result = choose_consistent_predicted_score(temp_result)
                 consistent_score = temp_result.get('predicted_score', '')
-                
-                st.caption(f"🔍 DEBUG: Soft-Optimierung ergab: {consistent_score}")
                 
                 if consistent_score:
                     # Finde Scoreline in Liste
@@ -200,8 +187,7 @@ def _display_ml_predictions_inline(result: Dict):
                     # Falls nicht gefunden, erstelle es
                     if not best_scoreline:
                         best_scoreline = {'scoreline': consistent_score, 'probability': 0.0}
-            except Exception as e:
-                st.caption(f"🔍 DEBUG: Fallback Error: {e}")
+            except:
                 pass
             
             # Final Fallback
@@ -288,7 +274,7 @@ def _display_ml_predictions_inline(result: Dict):
         # Konsens-Analyse
         _show_consensus_analysis(result, predictions, best_scoreline)
         
-        # Erfolgs-Hinweis
+        # Erfolgs-Hinweis (ohne DEBUG)
         st.caption(f"✅ ML Predictions basieren auf echten Match-Daten (gleiche Quelle wie Tab 6)")
         
     except Exception as e:
@@ -297,8 +283,6 @@ def _display_ml_predictions_inline(result: Dict):
         💡 **ML Predictions mit vollständigen Daten:**
         → Nutze Tab 6 "ML Predictions"
         """)
-        import traceback
-        st.caption(f"Debug: {traceback.format_exc()}")
 
 
 def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: Dict):
