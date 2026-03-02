@@ -113,10 +113,40 @@ def _display_ml_predictions_inline(result: Dict):
         
         # DEBUG
         if best_scoreline:
-            st.caption(f"🔍 DEBUG: Best match: {best_scoreline['scoreline']}")
+            st.caption(f"🔍 DEBUG: Best match (Tab 6 Methode): {best_scoreline['scoreline']}")
         else:
-            st.caption(f"🔍 DEBUG: Kein Match gefunden!")
-            best_scoreline = all_scorelines[0] if all_scorelines else None
+            st.caption(f"🔍 DEBUG: Kein perfektes Match! Nutze Soft-Optimierung...")
+            
+            # FALLBACK: Nutze choose_consistent_predicted_score für Soft-Optimierung
+            try:
+                from app import choose_consistent_predicted_score
+                
+                temp_result = {
+                    'scorelines': [(s['scoreline'], s['probability']) for s in all_scorelines],
+                    'probabilities': probs
+                }
+                
+                temp_result = choose_consistent_predicted_score(temp_result)
+                consistent_score = temp_result.get('predicted_score', '')
+                
+                st.caption(f"🔍 DEBUG: Soft-Optimierung ergab: {consistent_score}")
+                
+                if consistent_score:
+                    # Finde Scoreline in Liste
+                    for s in all_scorelines:
+                        if s['scoreline'] == consistent_score:
+                            best_scoreline = s
+                            break
+                    
+                    # Falls nicht gefunden, erstelle es
+                    if not best_scoreline:
+                        best_scoreline = {'scoreline': consistent_score, 'probability': 0.0}
+            except:
+                pass
+            
+            # Final Fallback
+            if not best_scoreline:
+                best_scoreline = all_scorelines[0] if all_scorelines else None
         
         # Display im gleichen 4-Spalten Format
         col1, col2, col3, col4 = st.columns(4)
