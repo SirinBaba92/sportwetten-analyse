@@ -75,19 +75,23 @@ def _display_ml_predictions_inline(result: Dict):
         # Hole Predictions (MIT Quoten)
         predictions = ml_models.predict_all(features, use_odds=True)
         
-        # Erstelle Scoreline Predictor
-        scoreline_pred = ScorelinePredictor()
+        # NUTZE ALTE SCORELINES direkt aus result!
+        # Diese wurden bereits mit den richtigen xG-Werten berechnet
+        scorelines_raw = result.get('scorelines', [])
+        if not scorelines_raw:
+            scorelines_raw = result.get('poisson_scorelines', [])
         
-        # Berechne xG GENAU WIE TAB 6!
-        # Nutze goals_scored_per_match aus match_data
-        old_xg_home = match_data.home_team.goals_scored_per_match if hasattr(match_data.home_team, 'goals_scored_per_match') else 1.5
-        old_xg_away = match_data.away_team.goals_scored_per_match if hasattr(match_data.away_team, 'goals_scored_per_match') else 1.3
+        # Konvertiere zu richtigem Format
+        scorelines = []
+        for item in scorelines_raw:
+            if isinstance(item, (list, tuple)) and len(item) == 2:
+                scorelines.append({
+                    'scoreline': str(item[0]),
+                    'probability': float(item[1])
+                })
         
-        # Generiere Scorelines mit GLEICHEN xG wie Tab 6
-        scorelines = scoreline_pred.predict_scorelines(old_xg_home, old_xg_away, top_n=20)
-        
-        # DEBUG: Zeige generierte Scorelines
-        st.caption(f"🔍 DEBUG: xG={old_xg_home:.2f}/{old_xg_away:.2f}, Top 5: {[s['scoreline'] for s in scorelines[:5]]}")
+        # DEBUG
+        st.caption(f"🔍 DEBUG: Nutze ALTE Scorelines: {[s['scoreline'] for s in scorelines[:5]]}")
         
         # CONSISTENCY CHECK - wähle konsistentes Scoreline!
         # WICHTIG: Nutze ALTE (SMART-PRECISION) Predictions für Consistency!
