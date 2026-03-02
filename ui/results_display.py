@@ -75,73 +75,48 @@ def _display_ml_predictions_inline(result: Dict):
         # Hole Predictions (MIT Quoten)
         predictions = ml_models.predict_all(features, use_odds=True)
         
-        # NUTZE ALTE SCORELINES direkt aus result!
-        # Diese wurden bereits mit den richtigen xG-Werten berechnet
-        scorelines_raw = result.get('scorelines', [])
-        if not scorelines_raw:
-            scorelines_raw = result.get('poisson_scorelines', [])
+        # Erstelle Scoreline Predictor
+        scoreline_pred = ScorelinePredictor()
         
-        # Konvertiere zu richtigem Format
-        scorelines = []
-        for item in scorelines_raw:
-            if isinstance(item, (list, tuple)) and len(item) == 2:
-                scorelines.append({
-                    'scoreline': str(item[0]),
-                    'probability': float(item[1])
-                })
+        # Berechne xG aus Match-Daten (wie Tab 6)
+        home_xg = match_data.home_team.goals_scored_per_match if hasattr(match_data.home_team, 'goals_scored_per_match') else 1.5
+        away_xg = match_data.away_team.goals_scored_per_match if hasattr(match_data.away_team, 'goals_scored_per_match') else 1.3
+        
+        # Generiere Scorelines (wie Tab 6)
+        all_scorelines = scoreline_pred.predict_scorelines(home_xg, away_xg, top_n=20)
         
         # DEBUG
-        st.caption(f"🔍 DEBUG: Nutze ALTE Scorelines: {[s['scoreline'] for s in scorelines[:5]]}")
+        st.caption(f"🔍 DEBUG: xG={home_xg:.2f}/{away_xg:.2f}, Top 5: {[s['scoreline'] for s in all_scorelines[:5]]}")
         
-        # CONSISTENCY CHECK - wähle konsistentes Scoreline!
-        # WICHTIG: Nutze ALTE (SMART-PRECISION) Predictions für Consistency!
-        best_scoreline = None
-        if scorelines:
-            # Hole ALTE Predictions aus result
-            probs = result.get('probabilities', {})
-            
-            # Erstelle temp_result für consistency check mit ALTEN Predictions
-            temp_result = {
-                'scorelines': [(s['scoreline'], s['probability']) for s in scorelines],
-                'probabilities': {
-                    'home_win': probs.get('home_win', 0),
-                    'draw': probs.get('draw', 0),
-                    'away_win': probs.get('away_win', 0),
-                    'over_25': probs.get('over_25', 0),
-                    'under_25': probs.get('under_25', 0),
-                    'btts_yes': probs.get('btts_yes', 0),
-                    'btts_no': probs.get('btts_no', 0)
-                }
-            }
-            
-            # Nutze consistency checker mit ALTEN Predictions
-            try:
-                from app import choose_consistent_predicted_score
-                
-                # DEBUG: Zeige Input
-                st.caption(f"🔍 DEBUG: ALTE Probs: H={probs.get('home_win', 0):.1f}%, O={probs.get('over_25', 0):.1f}%, BTTS_NO={probs.get('btts_no', 0):.1f}%")
-                
-                temp_result = choose_consistent_predicted_score(temp_result)
-                consistent_score = temp_result.get('predicted_score', '')
-                
-                # DEBUG: Zeige Output
-                st.caption(f"🔍 DEBUG: Consistency Check ergab: {consistent_score}")
-                
-                if consistent_score:
-                    # Finde das passende Scoreline aus der Liste
-                    for s in scorelines:
-                        if s['scoreline'] == consistent_score:
-                            best_scoreline = s
-                            break
-                    # Falls nicht gefunden, erstelle es
-                    if not best_scoreline:
-                        best_scoreline = {'scoreline': consistent_score, 'probability': 0.0}
-            except:
-                # Fallback: erstes Scoreline
-                best_scoreline = scorelines[0] if scorelines else None
+        # Hole ALTE Predictions für Consistency Check
+        probs = result.get('probabilities', {})
         
-        if not best_scoreline and scorelines:
-            best_scoreline = scorelines[0]
+        # Bestimme beste ALTE Predictions
+        best_1x2_prob = max(probs.get('home_win', 0), probs.get('draw', 0), probs.get('away_win', 0))
+        if best_1x2_prob == probs.get('home_win', 0):
+            x2_pred = 'HOME'
+        elif best_1x2_prob == probs.get('draw', 0):
+            x2_pred = 'DRAW'
+        else:
+            x2_pred = 'AWAY'
+        
+        ou_pred = 'OVER' if probs.get('over_25', 0) >= probs.get('under_25', 0) else 'UNDER'
+        btts_pred = 'YES' if probs.get('btts_yes', 0) >= probs.get('btts_no', 0) else 'NO'
+        
+        # DEBUG
+        st.caption(f"🔍 DEBUG: ALTE Markets: {x2_pred}, {ou_pred}, BTTS {btts_pred}")
+        
+        # Nutze GLEICHE Funktion wie Tab 6!
+        best_scoreline = scoreline_pred.get_most_likely_scoreline_for_markets(
+            x2_pred, ou_pred, btts_pred, all_scorelines
+        )
+        
+        # DEBUG
+        if best_scoreline:
+            st.caption(f"🔍 DEBUG: Best match: {best_scoreline['scoreline']}")
+        else:
+            st.caption(f"🔍 DEBUG: Kein Match gefunden!")
+            best_scoreline = all_scorelines[0] if all_scorelines else None
         
         # Display im gleichen 4-Spalten Format
         col1, col2, col3, col4 = st.columns(4)
