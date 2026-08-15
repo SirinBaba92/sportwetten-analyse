@@ -15,7 +15,7 @@ def _display_ml_predictions_inline(result: Dict):
     """
     Zeigt ML Predictions im gleichen Format wie Score-Vorhersage
     Nutzt die GLEICHEN Sheet-Daten wie Tab 6!
-    
+
     Args:
         result: Analyse-Ergebnis Dictionary (enthält _sheet_id und _selected_tab)
     """
@@ -25,40 +25,42 @@ def _display_ml_predictions_inline(result: Dict):
         from ml.scoreline_predictor import ScorelinePredictor
         from ui.sheets_ml_integration import convert_match_data_to_features
         from data import read_worksheet_text_by_id, DataParser
-        
+
         st.subheader("🤖 Machine Learning Prognose")
-        
+
         # Lade Models
         ml_models = get_ml_models()
-        
+
         if not ml_models.models_loaded:
-            st.info("💡 ML Models nicht verfügbar. Nutze Tab 6 für manuelle ML Predictions.")
+            st.info(
+                "💡 ML Models nicht verfügbar. Nutze Tab 6 für manuelle ML Predictions."
+            )
             return
-        
+
         # Hole sheet_id und tab aus result (wurde in app.py gespeichert!)
-        sheet_id = result.get('_sheet_id')
-        selected_tab = result.get('_selected_tab')
-        
+        sheet_id = result.get("_sheet_id")
+        selected_tab = result.get("_selected_tab")
+
         if not sheet_id or not selected_tab:
             st.info("""
             💡 **Für ML Predictions:**
             → Nutze Tab 6 "ML Predictions" für vollständige Analyse
             """)
             return
-        
+
         # Lade Match-Daten DIREKT aus Sheets (wie Tab 6!)
         try:
             with st.spinner("Lade Match-Daten für ML..."):
                 match_text = read_worksheet_text_by_id(sheet_id, selected_tab)
-                
+
                 if not match_text:
                     st.warning("⚠️ Konnte Match-Daten nicht laden")
                     return
-                
+
                 # Parse Match-Daten
                 parser = DataParser()
                 match_data = parser.parse(match_text)
-                
+
         except Exception as e:
             st.info(f"""
             💡 **ML Predictions nicht verfügbar**
@@ -68,199 +70,230 @@ def _display_ml_predictions_inline(result: Dict):
             → Nutze Tab 6 "ML Predictions" für vollständige Analyse
             """)
             return
-        
+
         # Konvertiere zu Features (GLEICHE Funktion wie Tab 6!)
         features = convert_match_data_to_features(match_data)
-        
+
         # Hole Predictions (MIT Quoten)
         predictions = ml_models.predict_all(features, use_odds=True)
-        
+
         # Erstelle Scoreline Predictor
         scoreline_pred = ScorelinePredictor()
-        
+
         # Berechne xG aus Match-Daten (wie Tab 6)
-        home_xg = match_data.home_team.goals_scored_per_match if hasattr(match_data.home_team, 'goals_scored_per_match') else 1.5
-        away_xg = match_data.away_team.goals_scored_per_match if hasattr(match_data.away_team, 'goals_scored_per_match') else 1.3
-        
+        home_xg = (
+            match_data.home_team.goals_scored_per_match
+            if hasattr(match_data.home_team, "goals_scored_per_match")
+            else 1.5
+        )
+        away_xg = (
+            match_data.away_team.goals_scored_per_match
+            if hasattr(match_data.away_team, "goals_scored_per_match")
+            else 1.3
+        )
+
         # Generiere Scorelines (wie Tab 6)
         all_scorelines = scoreline_pred.predict_scorelines(home_xg, away_xg, top_n=20)
-        
+
         # Bestimme ML Predictions für Consistency Check
-        if '1x2' in predictions:
-            ml_1x2 = predictions['1x2']['prediction'].replace(' WIN', '').replace('DRAW', 'DRAW')
-            if 'HOME' in ml_1x2:
-                x2_pred = 'HOME'
-            elif 'DRAW' in ml_1x2:
-                x2_pred = 'DRAW'
+        if "1x2" in predictions:
+            ml_1x2 = (
+                predictions["1x2"]["prediction"]
+                .replace(" WIN", "")
+                .replace("DRAW", "DRAW")
+            )
+            if "HOME" in ml_1x2:
+                x2_pred = "HOME"
+            elif "DRAW" in ml_1x2:
+                x2_pred = "DRAW"
             else:
-                x2_pred = 'AWAY'
+                x2_pred = "AWAY"
         else:
             # Fallback: ALTE
-            probs = result.get('probabilities', {})
-            best_1x2_prob = max(probs.get('home_win', 0), probs.get('draw', 0), probs.get('away_win', 0))
-            if best_1x2_prob == probs.get('home_win', 0):
-                x2_pred = 'HOME'
-            elif best_1x2_prob == probs.get('draw', 0):
-                x2_pred = 'DRAW'
+            probs = result.get("probabilities", {})
+            best_1x2_prob = max(
+                probs.get("home_win", 0), probs.get("draw", 0), probs.get("away_win", 0)
+            )
+            if best_1x2_prob == probs.get("home_win", 0):
+                x2_pred = "HOME"
+            elif best_1x2_prob == probs.get("draw", 0):
+                x2_pred = "DRAW"
             else:
-                x2_pred = 'AWAY'
-        
-        if 'over_under' in predictions:
-            ou_pred = 'OVER' if 'OVER' in predictions['over_under']['prediction'] else 'UNDER'
+                x2_pred = "AWAY"
+
+        if "over_under" in predictions:
+            ou_pred = (
+                "OVER" if "OVER" in predictions["over_under"]["prediction"] else "UNDER"
+            )
         else:
             # Fallback: ALTE
-            probs = result.get('probabilities', {})
-            ou_pred = 'OVER' if probs.get('over_25', 0) >= probs.get('under_25', 0) else 'UNDER'
-        
-        if 'btts' in predictions:
-            btts_pred = 'YES' if 'YES' in predictions['btts']['prediction'] else 'NO'
+            probs = result.get("probabilities", {})
+            ou_pred = (
+                "OVER"
+                if probs.get("over_25", 0) >= probs.get("under_25", 0)
+                else "UNDER"
+            )
+
+        if "btts" in predictions:
+            btts_pred = "YES" if "YES" in predictions["btts"]["prediction"] else "NO"
         else:
             # Fallback: ALTE
-            probs = result.get('probabilities', {})
-            btts_pred = 'YES' if probs.get('btts_yes', 0) >= probs.get('btts_no', 0) else 'NO'
-        
+            probs = result.get("probabilities", {})
+            btts_pred = (
+                "YES" if probs.get("btts_yes", 0) >= probs.get("btts_no", 0) else "NO"
+            )
+
         # Nutze GLEICHE Funktion wie Tab 6!
         best_scoreline = scoreline_pred.get_most_likely_scoreline_for_markets(
             x2_pred, ou_pred, btts_pred, all_scorelines
         )
-        
+
         # Fallback wenn kein perfektes Match
         if not best_scoreline:
             # Nutze choose_consistent_predicted_score für Soft-Optimierung
             try:
                 from app import choose_consistent_predicted_score
-                
+
                 # Erstelle Pseudo-Probabilities aus ML Predictions
                 ml_probs = {}
-                
-                if '1x2' in predictions:
-                    pred = predictions['1x2']['prediction']
-                    conf = predictions['1x2']['confidence']
-                    if 'HOME' in pred:
-                        ml_probs['home_win'] = conf
-                        ml_probs['draw'] = (100 - conf) / 2
-                        ml_probs['away_win'] = (100 - conf) / 2
-                    elif 'DRAW' in pred:
-                        ml_probs['draw'] = conf
-                        ml_probs['home_win'] = (100 - conf) / 2
-                        ml_probs['away_win'] = (100 - conf) / 2
+
+                if "1x2" in predictions:
+                    pred = predictions["1x2"]["prediction"]
+                    conf = predictions["1x2"]["confidence"]
+                    if "HOME" in pred:
+                        ml_probs["home_win"] = conf
+                        ml_probs["draw"] = (100 - conf) / 2
+                        ml_probs["away_win"] = (100 - conf) / 2
+                    elif "DRAW" in pred:
+                        ml_probs["draw"] = conf
+                        ml_probs["home_win"] = (100 - conf) / 2
+                        ml_probs["away_win"] = (100 - conf) / 2
                     else:
-                        ml_probs['away_win'] = conf
-                        ml_probs['home_win'] = (100 - conf) / 2
-                        ml_probs['draw'] = (100 - conf) / 2
-                
-                if 'over_under' in predictions:
-                    pred = predictions['over_under']['prediction']
-                    conf = predictions['over_under']['confidence']
-                    if 'OVER' in pred:
-                        ml_probs['over_25'] = conf
-                        ml_probs['under_25'] = 100 - conf
+                        ml_probs["away_win"] = conf
+                        ml_probs["home_win"] = (100 - conf) / 2
+                        ml_probs["draw"] = (100 - conf) / 2
+
+                if "over_under" in predictions:
+                    pred = predictions["over_under"]["prediction"]
+                    conf = predictions["over_under"]["confidence"]
+                    if "OVER" in pred:
+                        ml_probs["over_25"] = conf
+                        ml_probs["under_25"] = 100 - conf
                     else:
-                        ml_probs['under_25'] = conf
-                        ml_probs['over_25'] = 100 - conf
-                
-                if 'btts' in predictions:
-                    pred = predictions['btts']['prediction']
-                    conf = predictions['btts']['confidence']
-                    if 'YES' in pred:
-                        ml_probs['btts_yes'] = conf
-                        ml_probs['btts_no'] = 100 - conf
+                        ml_probs["under_25"] = conf
+                        ml_probs["over_25"] = 100 - conf
+
+                if "btts" in predictions:
+                    pred = predictions["btts"]["prediction"]
+                    conf = predictions["btts"]["confidence"]
+                    if "YES" in pred:
+                        ml_probs["btts_yes"] = conf
+                        ml_probs["btts_no"] = 100 - conf
                     else:
-                        ml_probs['btts_no'] = conf
-                        ml_probs['btts_yes'] = 100 - conf
-                
+                        ml_probs["btts_no"] = conf
+                        ml_probs["btts_yes"] = 100 - conf
+
                 temp_result = {
-                    'scorelines': [(s['scoreline'], s['probability']) for s in all_scorelines],
-                    'probabilities': ml_probs
+                    "scorelines": [
+                        (s["scoreline"], s["probability"]) for s in all_scorelines
+                    ],
+                    "probabilities": ml_probs,
                 }
-                
+
                 temp_result = choose_consistent_predicted_score(temp_result)
-                consistent_score = temp_result.get('predicted_score', '')
-                
+                consistent_score = temp_result.get("predicted_score", "")
+
                 if consistent_score:
                     # Finde Scoreline in Liste
                     for s in all_scorelines:
-                        if s['scoreline'] == consistent_score:
+                        if s["scoreline"] == consistent_score:
                             best_scoreline = s
                             break
-                    
+
                     # Falls nicht gefunden, erstelle es
                     if not best_scoreline:
-                        best_scoreline = {'scoreline': consistent_score, 'probability': 0.0}
+                        best_scoreline = {
+                            "scoreline": consistent_score,
+                            "probability": 0.0,
+                        }
             except:
                 pass
-            
+
             # Final Fallback
             if not best_scoreline:
                 best_scoreline = all_scorelines[0] if all_scorelines else None
-        
+
         # Display im gleichen 4-Spalten Format
         col1, col2, col3, col4 = st.columns(4)
-        
+
         with col1:
             # 1X2 + Quote
-            if '1x2' in predictions:
-                pred_1x2 = predictions['1x2']
+            if "1x2" in predictions:
+                pred_1x2 = predictions["1x2"]
                 label_map = {
-                    'HOME WIN': 'Heimsieg',
-                    'DRAW': 'Unentschieden',
-                    'AWAY WIN': 'Auswärtssieg'
+                    "HOME WIN": "Heimsieg",
+                    "DRAW": "Unentschieden",
+                    "AWAY WIN": "Auswärtssieg",
                 }
-                pred_label = label_map.get(pred_1x2['prediction'], pred_1x2['prediction'])
-                
+                pred_label = label_map.get(
+                    pred_1x2["prediction"], pred_1x2["prediction"]
+                )
+
                 # Hole Quote basierend auf Prediction
-                if pred_1x2['prediction'] == 'HOME WIN':
-                    odds = features.get('odds_home', 0.0)
-                elif pred_1x2['prediction'] == 'DRAW':
-                    odds = features.get('odds_draw', 0.0)
+                if pred_1x2["prediction"] == "HOME WIN":
+                    odds = features.get("odds_home", 0.0)
+                elif pred_1x2["prediction"] == "DRAW":
+                    odds = features.get("odds_draw", 0.0)
                 else:
-                    odds = features.get('odds_away', 0.0)
-                
+                    odds = features.get("odds_away", 0.0)
+
                 st.success(
                     f"### 🎯 1X2\n\n"
                     f"**{pred_label}**\n\n"
                     f"# {pred_1x2['confidence']:.1f}%\n"
                     f"**Quote: {odds:.2f}**"
                 )
-        
+
         with col2:
             # Over/Under + Quote
-            if 'over_under' in predictions:
-                pred_ou = predictions['over_under']
-                
+            if "over_under" in predictions:
+                pred_ou = predictions["over_under"]
+
                 # Hole Quote
-                if 'OVER' in pred_ou['prediction']:
-                    odds = features.get('odds_over25', 0.0)
+                if "OVER" in pred_ou["prediction"]:
+                    odds = features.get("odds_over25", 0.0)
                 else:
-                    odds = features.get('odds_under25', 0.0)
-                
+                    odds = features.get("odds_under25", 0.0)
+
                 st.success(
                     f"### 📈 Over/Under 2.5\n\n"
                     f"**{pred_ou['prediction']}**\n\n"
                     f"# {pred_ou['confidence']:.1f}%\n"
                     f"**Quote: {odds:.2f}**"
                 )
-        
+
         with col3:
             # BTTS + Quote
-            if 'btts' in predictions:
-                pred_btts = predictions['btts']
-                label_map = {'BTTS YES': 'BTTS Ja', 'BTTS NO': 'BTTS Nein'}
-                pred_label = label_map.get(pred_btts['prediction'], pred_btts['prediction'])
-                
+            if "btts" in predictions:
+                pred_btts = predictions["btts"]
+                label_map = {"BTTS YES": "BTTS Ja", "BTTS NO": "BTTS Nein"}
+                pred_label = label_map.get(
+                    pred_btts["prediction"], pred_btts["prediction"]
+                )
+
                 # Hole Quote
-                if pred_btts['prediction'] == 'BTTS YES':
-                    odds = features.get('odds_btts_yes', 0.0)
+                if pred_btts["prediction"] == "BTTS YES":
+                    odds = features.get("odds_btts_yes", 0.0)
                 else:
-                    odds = features.get('odds_btts_no', 0.0)
-                
+                    odds = features.get("odds_btts_no", 0.0)
+
                 st.success(
                     f"### ⚽ BTTS\n\n"
                     f"**{pred_label}**\n\n"
                     f"# {pred_btts['confidence']:.1f}%\n"
                     f"**Quote: {odds:.2f}**"
                 )
-        
+
         with col4:
             # Wahrscheinlichstes Ergebnis (keine Quote)
             if best_scoreline:
@@ -270,13 +303,15 @@ def _display_ml_predictions_inline(result: Dict):
                     f"**Wahrscheinlichkeit:**\n"
                     f"# {best_scoreline['probability']:.1f}%"
                 )
-        
+
         # Konsens-Analyse
         _show_consensus_analysis(result, predictions, best_scoreline)
-        
+
         # Erfolgs-Hinweis (ohne DEBUG)
-        st.caption(f"✅ ML Predictions basieren auf echten Match-Daten (gleiche Quelle wie Tab 6)")
-        
+        st.caption(
+            f"✅ ML Predictions basieren auf echten Match-Daten (gleiche Quelle wie Tab 6)"
+        )
+
     except Exception as e:
         # Stilles Fallback - zeige nur Info
         st.info("""
@@ -296,7 +331,7 @@ def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: D
     try:
         # Extrahiere SMART-PRECISION Predictions
         probs = result.get("probabilities", {})
-        
+
         # Hole Wahrscheinlichkeiten
         smart_home = probs.get("home_win", 0)
         smart_draw = probs.get("draw", 0)
@@ -305,58 +340,66 @@ def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: D
         smart_under = probs.get("under_25", 0)
         smart_btts_yes = probs.get("btts_yes", 0)
         smart_btts_no = probs.get("btts_no", 0)
-        
+
         # Beste Predictions
-        smart_1x2 = "Heimsieg" if smart_home >= max(smart_draw, smart_away) else (
-            "Unentschieden" if smart_draw >= smart_away else "Auswärtssieg"
+        smart_1x2 = (
+            "Heimsieg"
+            if smart_home >= max(smart_draw, smart_away)
+            else ("Unentschieden" if smart_draw >= smart_away else "Auswärtssieg")
         )
         smart_1x2_prob = max(smart_home, smart_draw, smart_away)
-        
+
         smart_ou = "Over 2.5" if smart_over >= smart_under else "Under 2.5"
         smart_ou_prob = max(smart_over, smart_under)
-        
+
         smart_btts = "BTTS Ja" if smart_btts_yes >= smart_btts_no else "BTTS Nein"
         smart_btts_prob = max(smart_btts_yes, smart_btts_no)
-        
+
         smart_score = result.get("predicted_score", "N/A")
-        
+
         # Extrahiere ML Predictions
-        ml_1x2_raw = ml_predictions.get('1x2', {}).get('prediction', '')
-        ml_1x2 = {'HOME WIN': 'Heimsieg', 'DRAW': 'Unentschieden', 'AWAY WIN': 'Auswärtssieg'}.get(ml_1x2_raw, ml_1x2_raw)
-        ml_ou = ml_predictions.get('over_under', {}).get('prediction', '')
-        ml_btts_raw = ml_predictions.get('btts', {}).get('prediction', '')
-        ml_btts = {'BTTS YES': 'BTTS Ja', 'BTTS NO': 'BTTS Nein'}.get(ml_btts_raw, ml_btts_raw)
-        ml_score = ml_scoreline.get('scoreline', 'N/A') if ml_scoreline else 'N/A'
-        
+        ml_1x2_raw = ml_predictions.get("1x2", {}).get("prediction", "")
+        ml_1x2 = {
+            "HOME WIN": "Heimsieg",
+            "DRAW": "Unentschieden",
+            "AWAY WIN": "Auswärtssieg",
+        }.get(ml_1x2_raw, ml_1x2_raw)
+        ml_ou = ml_predictions.get("over_under", {}).get("prediction", "")
+        ml_btts_raw = ml_predictions.get("btts", {}).get("prediction", "")
+        ml_btts = {"BTTS YES": "BTTS Ja", "BTTS NO": "BTTS Nein"}.get(
+            ml_btts_raw, ml_btts_raw
+        )
+        ml_score = ml_scoreline.get("scoreline", "N/A") if ml_scoreline else "N/A"
+
         # Check Konsens MIT SCHWELLENWERTEN!
         consensus_items = []
         weak_items = []  # Items die matchen aber Schwellenwert nicht erreichen
-        
+
         # 1X2: Nur wenn SMART ≥ 50%
         if smart_1x2 == ml_1x2:
             if smart_1x2_prob >= 50:
                 consensus_items.append(f"{smart_1x2} ({smart_1x2_prob:.1f}%)")
             else:
                 weak_items.append(f"{smart_1x2} (nur {smart_1x2_prob:.1f}%, <50%)")
-        
+
         # Over/Under: Nur wenn SMART ≥ 60%
         if smart_ou == ml_ou:
             if smart_ou_prob >= 60:
                 consensus_items.append(f"{smart_ou} ({smart_ou_prob:.1f}%)")
             else:
                 weak_items.append(f"{smart_ou} (nur {smart_ou_prob:.1f}%, <60%)")
-        
+
         # BTTS: Nur wenn SMART ≥ 60%
         if smart_btts == ml_btts:
             if smart_btts_prob >= 60:
                 consensus_items.append(f"{smart_btts} ({smart_btts_prob:.1f}%)")
             else:
                 weak_items.append(f"{smart_btts} (nur {smart_btts_prob:.1f}%, <60%)")
-        
+
         # Score (kein Schwellenwert)
         if smart_score == ml_score:
             consensus_items.append(f"Score: {smart_score}")
-        
+
         # Zeige Konsens-Ergebnis
         if len(consensus_items) >= 2:
             st.success(
@@ -379,7 +422,7 @@ def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: D
                 msg += f"**Keine Übereinstimmung** zwischen den Systemen.\n\n"
             msg += f"⚠️ Bei Uneinigkeit: höhere Vorsicht oder Skip!"
             st.warning(msg)
-            
+
     except Exception as e:
         # Stilles Ignorieren wenn Konsens nicht berechnet werden kann
         pass
@@ -489,6 +532,97 @@ def display_stake_recommendation(
             )
 
 
+def display_simulation_section(result: Dict):
+    """
+    Zeigt eine Monte-Carlo-Spielsimulation auf Basis der bereits berechneten
+    μ-Werte (result["mu"]). Nutzer wählt die Anzahl der Durchläufe.
+    """
+    from analysis.simulation import simulate_match
+
+    st.subheader("🎲 Monte-Carlo-Spielsimulation")
+
+    mu_home = result["mu"]["home"]
+    mu_away = result["mu"]["away"]
+
+    col_a, col_b = st.columns([2, 1])
+    with col_a:
+        n_sims = st.select_slider(
+            "Anzahl Durchgänge",
+            options=[1_000, 10_000, 100_000, 1_000_000],
+            value=10_000,
+            format_func=lambda x: f"{x:,}".replace(",", "."),
+            key=f"sim_n_{result['match_info']['home']}_{result['match_info']['away']}",
+        )
+    with col_b:
+        run_sim = st.button(
+            "▶️ Simulation starten",
+            key=f"sim_run_{result['match_info']['home']}_{result['match_info']['away']}",
+        )
+
+    if run_sim:
+        with st.spinner(f"Simuliere {n_sims:,} Spiele...".replace(",", ".")):
+            sim_result = simulate_match(mu_home=mu_home, mu_away=mu_away, n_sims=n_sims)
+
+        sp = sim_result["probabilities"]
+        ci = sim_result["confidence_95"]
+
+        st.caption(
+            f"Basis: μ Heim={mu_home:.2f}, μ Auswärts={mu_away:.2f} · "
+            f"{sim_result['n_sims']:,} simulierte Spiele (95%-Konfidenzintervall in Klammern)".replace(
+                ",", "."
+            )
+        )
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Heimsieg", f"{sp['home_win']}%", f"±{ci['home_win']}pp")
+        col2.metric("Remis", f"{sp['draw']}%", f"±{ci['draw']}pp")
+        col3.metric("Auswärtssieg", f"{sp['away_win']}%", f"±{ci['away_win']}pp")
+
+        col4, col5, col6 = st.columns(3)
+        col4.metric("Über 2.5", f"{sp['over_25']}%", f"±{ci['over_25']}pp")
+        col5.metric("BTTS Ja", f"{sp['btts_yes']}%", f"±{ci['btts_yes']}pp")
+        col6.metric("Ø Tore gesamt", f"{sim_result['avg_goals']['total']}")
+
+        st.markdown("**Häufigste simulierte Ergebnisse:**")
+        top_df = pd.DataFrame(
+            sim_result["top_scorelines"], columns=["Ergebnis", "Häufigkeit (%)"]
+        )
+        st.dataframe(top_df, use_container_width=True, hide_index=True)
+
+        # Vergleich zur direkten Poisson-Berechnung (analyze_match_v47_ml)
+        with st.expander("Vergleich zur analytischen Poisson-Berechnung"):
+            comp_df = pd.DataFrame(
+                {
+                    "Markt": [
+                        "Heimsieg",
+                        "Remis",
+                        "Auswärtssieg",
+                        "Über 2.5",
+                        "BTTS Ja",
+                    ],
+                    "Analytisch (Poisson)": [
+                        f"{result['probabilities']['home_win']}%",
+                        f"{result['probabilities']['draw']}%",
+                        f"{result['probabilities']['away_win']}%",
+                        f"{result['probabilities']['over_25']}%",
+                        f"{result['probabilities']['btts_yes']}%",
+                    ],
+                    "Simulation": [
+                        f"{sp['home_win']}%",
+                        f"{sp['draw']}%",
+                        f"{sp['away_win']}%",
+                        f"{sp['over_25']}%",
+                        f"{sp['btts_yes']}%",
+                    ],
+                }
+            )
+            st.dataframe(comp_df, use_container_width=True, hide_index=True)
+            st.caption(
+                "Beide Werte basieren auf denselben μ-Werten und derselben Poisson-Annahme — "
+                "kleine Abweichungen sind reines Simulationsrauschen und schrumpfen mit mehr Durchgängen."
+            )
+
+
 def display_results(result: Dict):
     """
     Zeigt vollständige Analyse-Ergebnisse an
@@ -534,16 +668,14 @@ def display_results(result: Dict):
     risk_emoji = risk_colors.get(overall_risk["score"], "⚪")
 
     # Summary Box
-    st.info(
-        f"""
+    st.info(f"""
     ### 📊 QUICK SUMMARY
     
     **Top-Empfehlung:** {best_1x2_market} ({best_1x2_prob:.1f}%)  
     **Risiko-Score:** {risk_emoji} {overall_risk['score']}/5 - {overall_risk['category']}  
     **Empfohlener Einsatz:** {recommended_stake}  
     **Predicted Score:** {result['predicted_score']} ({result['scorelines'][0][1]:.1f}% Wahrscheinlichkeit)
-    """
-    )
+    """)
 
     st.markdown("---")
 
@@ -568,11 +700,11 @@ def display_results(result: Dict):
             )
         )
         best_1x2_prob = max(probs["home_win"], probs["draw"], probs["away_win"])
-        
+
         # Hole Quote
         risk_1x2 = result["extended_risk"]["1x2"]
         odds_1x2 = risk_1x2.get("odds", 0.0)
-        
+
         st.success(
             f"### 🎯 1X2\n\n"
             f"**{best_1x2}**\n\n"
@@ -584,14 +716,14 @@ def display_results(result: Dict):
         # Over/Under 2.5 - separate Box + Quote
         best_ou = "Over 2.5" if probs["over_25"] >= probs["under_25"] else "Under 2.5"
         best_ou_prob = max(probs["over_25"], probs["under_25"])
-        
+
         # Hole Quote
         risk_ou = result["extended_risk"]["over_under"]
         if best_ou == "Over 2.5":
             odds_ou = risk_ou.get("over", {}).get("odds", 0.0)
         else:
             odds_ou = risk_ou.get("under", {}).get("odds", 0.0)
-        
+
         st.success(
             f"### 📈 Over/Under 2.5\n\n"
             f"**{best_ou}**\n\n"
@@ -603,14 +735,14 @@ def display_results(result: Dict):
         # BTTS - separate Box + Quote
         best_btts = "BTTS Ja" if probs["btts_yes"] >= probs["btts_no"] else "BTTS Nein"
         best_btts_prob = max(probs["btts_yes"], probs["btts_no"])
-        
+
         # Hole Quote
         risk_btts = result["extended_risk"]["btts"]
         if best_btts == "BTTS Ja":
             odds_btts = risk_btts.get("yes", {}).get("odds", 0.0)
         else:
             odds_btts = risk_btts.get("no", {}).get("odds", 0.0)
-        
+
         st.success(
             f"### ⚽ BTTS\n\n"
             f"**{best_btts}**\n\n"
@@ -635,7 +767,7 @@ def display_results(result: Dict):
     # ========================================================================
     st.markdown("---")
     _display_ml_predictions_inline(result)
-    
+
     # ========================================================================
     # EXPORT ZU GOOGLE SHEETS - DIREKT NACH KONSENS!
     # ========================================================================
@@ -703,7 +835,7 @@ def display_results(result: Dict):
             st.balloons()
         else:
             st.error("❌ Export fehlgeschlagen")
-    
+
     st.markdown("---")
 
     # Alarm-System
@@ -1000,6 +1132,10 @@ def display_results(result: Dict):
     )
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
+    # Monte-Carlo-Simulation
+    st.markdown("---")
+    display_simulation_section(result)
+
     # Visualisierungen
     st.markdown("---")
     st.subheader("📈 Visualisierungen")
@@ -1112,13 +1248,11 @@ def display_risk_distribution(all_results: List[Dict]):
 
     with col2:
         st.markdown("### 🎯 Ziel-Verteilung")
-        st.caption(
-            """
+        st.caption("""
         **Ideal:**
         - 5/5: 2-5%
         - 4/5: 10-15%
         - 3/5: 60-70%
         - 2/5: 15-20%
         - 1/5: 5-10%
-        """
-        )
+        """)
