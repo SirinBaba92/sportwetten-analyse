@@ -112,30 +112,22 @@ def choose_consistent_predicted_score(result: dict) -> dict:
         TH_DRAW = 38.0
 
         need_homewin = need_draw = need_awaywin = False
-        # Nur erzwingen, wenn 1X2 wirklich klar ist
+        # KONSISTENZ-FIX: Die 1X2-Kategorie (Heim/Remis/Auswärts) muss IMMER zum
+        # Correct Score passen - unabhängig davon, wie stark/knapp der Tipp ist.
+        # Vorher griff der Zwang nur bei starkem Signal (>=50% & 8pp Abstand),
+        # wodurch bei knappen Spielen (wo diese Inkonsistenz am häufigsten auftritt)
+        # wieder die global wahrscheinlichste Zelle gewählt wurde - unabhängig vom Tipp.
         if p_home is not None and p_draw is not None and p_away is not None:
             triples = [("H", p_home), ("D", p_draw), ("A", p_away)]
             triples_sorted = sorted(triples, key=lambda x: x[1], reverse=True)
             best_code, best_val = triples_sorted[0]
             second_val = triples_sorted[1][1]
 
-            if (
-                best_code == "H"
-                and best_val >= TH_1X2
-                and (best_val - second_val) >= GAP_1X2
-            ):
+            if best_code == "H":
                 need_homewin = True
-            elif (
-                best_code == "A"
-                and best_val >= TH_1X2
-                and (best_val - second_val) >= GAP_1X2
-            ):
+            elif best_code == "A":
                 need_awaywin = True
-            elif (
-                best_code == "D"
-                and best_val >= TH_DRAW
-                and (best_val - second_val) >= GAP_1X2
-            ):
+            else:
                 need_draw = True
 
         def parse_score(s):
