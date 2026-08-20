@@ -238,6 +238,34 @@ def analyze_match_v47_ml(match: MatchData) -> Dict:
     scoreline_probs.sort(key=lambda x: x[2], reverse=True)
     top_scorelines = [(f"{i}-{j}", round(p * 100, 2)) for i, j, p in scoreline_probs[:20]]
 
+    # KONSISTENZ-FIX: predicted_score darf nicht dem 1X2-Tipp widersprechen.
+    # score/max_p oben ist das globale Maximum über ALLE Zellen - das kann eine
+    # andere Ergebnis-Kategorie (Heimsieg/Remis/Auswärtssieg) sein als der
+    # tatsächliche 1X2-Tipp (der aus der SUMME wh/dr/wa gebildet wird).
+    # Deshalb hier: unter den Zellen, die zur Tipp-Kategorie passen, die
+    # wahrscheinlichste nehmen - garantiert konsistent mit dem 1X2-Tipp.
+    if wh >= dr and wh >= wa:
+        tipp_kategorie = "home"
+    elif wa >= wh and wa >= dr:
+        tipp_kategorie = "away"
+    else:
+        tipp_kategorie = "draw"
+
+    consistent_max_p, consistent_score = 0.0, score
+    for i, j, p in scoreline_probs:
+        if tipp_kategorie == "home" and i > j:
+            passt = True
+        elif tipp_kategorie == "away" and i < j:
+            passt = True
+        elif tipp_kategorie == "draw" and i == j:
+            passt = True
+        else:
+            passt = False
+        if passt and p > consistent_max_p:
+            consistent_max_p, consistent_score = p, (i, j)
+
+    score = consistent_score
+
     # 13. BTTS-PRÄZISIONS-FILTER v4.9
     if mu_h < 1.0 or mu_a < 1.0:
         btts_p *= 0.8
