@@ -269,39 +269,45 @@ def export_analysis_to_sheets(result: dict, actual_score: str = None) -> bool:
             pass
 
         # ===================================================================
-        # KONSENS-QUOTEN (nur wenn Schwellenwerte erreicht!)
+        # QUOTEN DER GETIPPTEN AUSWAHL (SMART + ML, unabhängig voneinander)
         # ===================================================================
-        # Hole Quoten aus extended_risk
-        odds_1x2 = result["extended_risk"]["1x2"].get("odds", 0.0)
+        odds_1x2_full = result["odds"]["1x2"]  # (Heim, X, Auswärts)
         odds_ou = result["extended_risk"]["over_under"]
         odds_btts = result["extended_risk"]["btts"]
 
-        consensus_1x2_odds = ""
-        consensus_ou_odds = ""
-        consensus_btts_odds = ""
+        label_to_index_1x2 = {"1": 0, "X": 1, "2": 2}
 
-        # 1X2: Konsens wenn ALTE ≥50% UND Predictions matchen
-        if best_1x2_prob >= 50 and ml_1x2_prediction:
-            # Normalisiere ML Prediction
-            ml_1x2_norm = ml_1x2_prediction.replace(" WIN", "").strip()
-            if smart_1x2_prediction == ml_1x2_norm:
-                consensus_1x2_odds = f"{odds_1x2:.2f}"
+        # 1X2: Quote passend zum jeweils getippten Label
+        smart_1x2_odds = odds_1x2_full[label_to_index_1x2[smart_1x2_label]]
+        ml_1x2_odds = (
+            odds_1x2_full[label_to_index_1x2[ml_1x2_label]] if ml_1x2_label else ""
+        )
 
-        # Over/Under: Konsens wenn ALTE ≥60% UND Predictions matchen
-        if best_ou_prob >= 60 and ml_ou_prediction:
-            if smart_ou_prediction == ml_ou_prediction:
-                if smart_ou_prediction == "OVER":
-                    consensus_ou_odds = f"{odds_ou.get('over', {}).get('odds', 0.0):.2f}"
-                else:
-                    consensus_ou_odds = f"{odds_ou.get('under', {}).get('odds', 0.0):.2f}"
+        # Over/Under: Quote passend zum jeweils getippten Markt
+        if smart_ou_prediction == "OVER":
+            smart_ou_odds = odds_ou.get("over", {}).get("odds", 0.0)
+        else:
+            smart_ou_odds = odds_ou.get("under", {}).get("odds", 0.0)
 
-        # BTTS: Konsens wenn ALTE ≥60% UND Predictions matchen
-        if best_btts_prob >= 60 and ml_btts_prediction:
-            if smart_btts_prediction == ml_btts_prediction:
-                if smart_btts_prediction == "YES":
-                    consensus_btts_odds = f"{odds_btts.get('yes', {}).get('odds', 0.0):.2f}"
-                else:
-                    consensus_btts_odds = f"{odds_btts.get('no', {}).get('odds', 0.0):.2f}"
+        if ml_ou_prediction == "OVER":
+            ml_ou_odds = odds_ou.get("over", {}).get("odds", 0.0)
+        elif ml_ou_prediction == "UNDER":
+            ml_ou_odds = odds_ou.get("under", {}).get("odds", 0.0)
+        else:
+            ml_ou_odds = ""
+
+        # BTTS: Quote passend zum jeweils getippten Markt
+        if smart_btts_prediction == "YES":
+            smart_btts_odds = odds_btts.get("yes", {}).get("odds", 0.0)
+        else:
+            smart_btts_odds = odds_btts.get("no", {}).get("odds", 0.0)
+
+        if ml_btts_prediction == "YES":
+            ml_btts_odds = odds_btts.get("yes", {}).get("odds", 0.0)
+        elif ml_btts_prediction == "NO":
+            ml_btts_odds = odds_btts.get("no", {}).get("odds", 0.0)
+        else:
+            ml_btts_odds = ""
 
         # ===================================================================
         # ERSTELLE UPDATES MIT LABELS
@@ -317,25 +323,28 @@ def export_analysis_to_sheets(result: dict, actual_score: str = None) -> bool:
             # ZEILE 4: 1X2 Percentages & Quote
             {"range": f"{sheet_tab_name}!B{next_row + 3}", "values": [[f"{best_1x2_prob:.1f}%"]]},  # Alte %
             {"range": f"{sheet_tab_name}!C{next_row + 3}", "values": [[f"{ml_1x2_prob:.1f}%" if ml_1x2_prob else ""]]},  # ML %
-            {"range": f"{sheet_tab_name}!E{next_row + 3}", "values": [[consensus_1x2_odds]]},  # Konsens Quote
-            
+            {"range": f"{sheet_tab_name}!D{next_row + 3}", "values": [[f"{smart_1x2_odds:.2f}"]]},  # Smart Quote
+            {"range": f"{sheet_tab_name}!E{next_row + 3}", "values": [[f"{ml_1x2_odds:.2f}" if ml_1x2_odds != "" else ""]]},  # ML Quote
+
             # ZEILE 5: Over/Under Labels
             {"range": f"{sheet_tab_name}!B{next_row + 4}", "values": [[smart_ou_label]]},  # Alte Label
             {"range": f"{sheet_tab_name}!C{next_row + 4}", "values": [[ml_ou_label]]},  # ML Label
-            
+
             # ZEILE 6: Over/Under Percentages & Quote
             {"range": f"{sheet_tab_name}!B{next_row + 5}", "values": [[f"{best_ou_prob:.1f}%"]]},  # Alte %
             {"range": f"{sheet_tab_name}!C{next_row + 5}", "values": [[f"{ml_ou_prob:.1f}%" if ml_ou_prob else ""]]},  # ML %
-            {"range": f"{sheet_tab_name}!E{next_row + 5}", "values": [[consensus_ou_odds]]},  # Konsens Quote
-            
+            {"range": f"{sheet_tab_name}!D{next_row + 5}", "values": [[f"{smart_ou_odds:.2f}"]]},  # Smart Quote
+            {"range": f"{sheet_tab_name}!E{next_row + 5}", "values": [[f"{ml_ou_odds:.2f}" if ml_ou_odds != "" else ""]]},  # ML Quote
+
             # ZEILE 7: BTTS Labels
             {"range": f"{sheet_tab_name}!B{next_row + 6}", "values": [[smart_btts_label]]},  # Alte Label
             {"range": f"{sheet_tab_name}!C{next_row + 6}", "values": [[ml_btts_label]]},  # ML Label
-            
+
             # ZEILE 8: BTTS Percentages & Quote
             {"range": f"{sheet_tab_name}!B{next_row + 7}", "values": [[f"{best_btts_prob:.1f}%"]]},  # Alte %
             {"range": f"{sheet_tab_name}!C{next_row + 7}", "values": [[f"{ml_btts_prob:.1f}%" if ml_btts_prob else ""]]},  # ML %
-            {"range": f"{sheet_tab_name}!E{next_row + 7}", "values": [[consensus_btts_odds]]},  # Konsens Quote
+            {"range": f"{sheet_tab_name}!D{next_row + 7}", "values": [[f"{smart_btts_odds:.2f}"]]},  # Smart Quote
+            {"range": f"{sheet_tab_name}!E{next_row + 7}", "values": [[f"{ml_btts_odds:.2f}" if ml_btts_odds != "" else ""]]},  # ML Quote
             
             # ZEILE 9: Scores
             {"range": f"{sheet_tab_name}!B{next_row + 8}", "values": [[predicted_score]]},  # Alte
