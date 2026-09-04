@@ -623,7 +623,7 @@ def display_simulation_section(result: Dict):
             )
 
 
-def display_results(result: Dict):
+def display_results(result: Dict, key_suffix: str = ""):
     """
     Zeigt vollständige Analyse-Ergebnisse an
 
@@ -781,8 +781,8 @@ def display_results(result: Dict):
         st.session_state["_do_export_simple"] = True
 
     def _trigger_export_with_result():
-        h = st.session_state.get("exp_home_rd", 0)
-        a = st.session_state.get("exp_away_rd", 0)
+        h = st.session_state.get(f"exp_home_rd{key_suffix}", 0)
+        a = st.session_state.get(f"exp_away_rd{key_suffix}", 0)
         st.session_state["_export_actual_score"] = f"{h}-{a}"
         st.session_state["_do_export_with_result"] = True
 
@@ -791,7 +791,7 @@ def display_results(result: Dict):
         st.button(
             "💾 Analyse exportieren",
             use_container_width=True,
-            key="export_btn_simple_rd",
+            key=f"export_btn_simple_rd{key_suffix}",
             on_click=_trigger_simple_export,
         )
 
@@ -799,13 +799,13 @@ def display_results(result: Dict):
         st.caption("Optional: Tatsächliches Ergebnis für Export")
         c1, c2 = st.columns(2)
         with c1:
-            st.number_input("Heim", 0, 10, 0, key="exp_home_rd")
+            st.number_input("Heim", 0, 10, 0, key=f"exp_home_rd{key_suffix}")
         with c2:
-            st.number_input("Auswärts", 0, 10, 0, key="exp_away_rd")
+            st.number_input("Auswärts", 0, 10, 0, key=f"exp_away_rd{key_suffix}")
         st.button(
             "📤 Mit Ergebnis exportieren",
             use_container_width=True,
-            key="export_btn_with_result_rd",
+            key=f"export_btn_with_result_rd{key_suffix}",
             on_click=_trigger_export_with_result,
         )
 
