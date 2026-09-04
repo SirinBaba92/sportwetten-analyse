@@ -532,7 +532,7 @@ def display_stake_recommendation(
             )
 
 
-def display_simulation_section(result: Dict):
+def display_simulation_section(result: Dict, key_suffix: str = ""):
     """
     Zeigt eine Monte-Carlo-Spielsimulation auf Basis der bereits berechneten
     μ-Werte (result["mu"]). Nutzer wählt die Anzahl der Durchläufe.
@@ -551,12 +551,12 @@ def display_simulation_section(result: Dict):
             options=[1_000, 10_000, 100_000, 1_000_000],
             value=10_000,
             format_func=lambda x: f"{x:,}".replace(",", "."),
-            key=f"sim_n_{result['match_info']['home']}_{result['match_info']['away']}",
+            key=f"sim_n_{result['match_info']['home']}_{result['match_info']['away']}{key_suffix}",
         )
     with col_b:
         run_sim = st.button(
             "▶️ Simulation starten",
-            key=f"sim_run_{result['match_info']['home']}_{result['match_info']['away']}",
+            key=f"sim_run_{result['match_info']['home']}_{result['match_info']['away']}{key_suffix}",
         )
 
     if run_sim:
@@ -587,7 +587,7 @@ def display_simulation_section(result: Dict):
         top_df = pd.DataFrame(
             sim_result["top_scorelines"], columns=["Ergebnis", "Häufigkeit (%)"]
         )
-        st.dataframe(top_df, use_container_width=True, hide_index=True)
+        st.dataframe(top_df, use_container_width=True, hide_index=True, key=f"top_scorelines_df{key_suffix}")
 
         # Vergleich zur direkten Poisson-Berechnung (analyze_match_v47_ml)
         with st.expander("Vergleich zur analytischen Poisson-Berechnung"):
@@ -616,7 +616,7 @@ def display_simulation_section(result: Dict):
                     ],
                 }
             )
-            st.dataframe(comp_df, use_container_width=True, hide_index=True)
+            st.dataframe(comp_df, use_container_width=True, hide_index=True, key=f"comp_df{key_suffix}")
             st.caption(
                 "Beide Werte basieren auf denselben μ-Werten und derselben Poisson-Annahme — "
                 "kleine Abweichungen sind reines Simulationsrauschen und schrumpfen mit mehr Durchgängen."
@@ -907,7 +907,7 @@ def display_results(result: Dict, key_suffix: str = ""):
             )
         )
         fig_risk.update_layout(height=200)
-        st.plotly_chart(fig_risk, use_container_width=True)
+        st.plotly_chart(fig_risk, use_container_width=True, key=f"risk_chart{key_suffix}")
 
     # Einzelne Wett-Risikos
     st.subheader("📊 EINZELNE WETT-RISIKOS")
@@ -1130,11 +1130,11 @@ def display_results(result: Dict, key_suffix: str = ""):
             "font-weight": "bold",
         }
     )
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    st.dataframe(styled_df, use_container_width=True, hide_index=True, key=f"markets_df{key_suffix}")
 
     # Monte-Carlo-Simulation
     st.markdown("---")
-    display_simulation_section(result)
+    display_simulation_section(result, key_suffix=key_suffix)
 
     # Visualisierungen
     st.markdown("---")
