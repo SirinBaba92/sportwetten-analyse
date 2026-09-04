@@ -113,6 +113,9 @@ def show_poisson_heatmap(result: Dict, key_suffix: str = ""):
     )
 
     st.plotly_chart(fig, use_container_width=True, key=f"poisson_chart{key_suffix}")
+
+    # Tabelle mit Details - mit besserer Formatierung
+    with st.expander("📋 Detaillierte Wahrscheinlichkeiten", expanded=True):
         # Füge Formatierung für die Tabelle hinzu
         styled_df = df[["Ergebnis", "Wahrscheinlichkeit"]].copy()
 
@@ -495,6 +498,9 @@ def show_team_radar(result: Dict, key_suffix: str = ""):
     )
 
     st.plotly_chart(fig, use_container_width=True, key=f"team_radar_chart{key_suffix}")
+
+    # Detail-Tabelle
+    with st.expander("📋 Detaillierte Werte"):
         comparison_data = {
             "Kategorie": categories,
             home_team.name: [
