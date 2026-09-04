@@ -775,16 +775,16 @@ def display_results(result: Dict, key_suffix: str = ""):
     st.subheader("📤 Export zu Google Sheets")
 
     # Letztes Analyse-Ergebnis speichern (damit Export nach Rerun funktioniert)
-    st.session_state["_last_analysis_result"] = result
+    st.session_state[f"_last_analysis_result{key_suffix}"] = result
 
     def _trigger_simple_export():
-        st.session_state["_do_export_simple"] = True
+        st.session_state[f"_do_export_simple{key_suffix}"] = True
 
     def _trigger_export_with_result():
         h = st.session_state.get(f"exp_home_rd{key_suffix}", 0)
         a = st.session_state.get(f"exp_away_rd{key_suffix}", 0)
-        st.session_state["_export_actual_score"] = f"{h}-{a}"
-        st.session_state["_do_export_with_result"] = True
+        st.session_state[f"_export_actual_score{key_suffix}"] = f"{h}-{a}"
+        st.session_state[f"_do_export_with_result{key_suffix}"] = True
 
     col_export, col_actual = st.columns(2)
     with col_export:
@@ -810,9 +810,9 @@ def display_results(result: Dict, key_suffix: str = ""):
         )
 
     # Exporte ausführen (klick-sicher nach Render)
-    export_result = st.session_state.get("_last_analysis_result")
-    if st.session_state.get("_do_export_simple"):
-        st.session_state["_do_export_simple"] = False
+    export_result = st.session_state.get(f"_last_analysis_result{key_suffix}")
+    if st.session_state.get(f"_do_export_simple{key_suffix}"):
+        st.session_state[f"_do_export_simple{key_suffix}"] = False
         from models import export_analysis_to_sheets
 
         with st.spinner("Exportiere Analyse..."):
@@ -823,9 +823,9 @@ def display_results(result: Dict, key_suffix: str = ""):
         else:
             st.error("❌ Export fehlgeschlagen")
 
-    if st.session_state.get("_do_export_with_result"):
-        st.session_state["_do_export_with_result"] = False
-        actual_score = st.session_state.get("_export_actual_score")
+    if st.session_state.get(f"_do_export_with_result{key_suffix}"):
+        st.session_state[f"_do_export_with_result{key_suffix}"] = False
+        actual_score = st.session_state.get(f"_export_actual_score{key_suffix}")
         from models import export_analysis_to_sheets
 
         with st.spinner(f"Exportiere mit Ergebnis {actual_score}..."):
@@ -1154,21 +1154,22 @@ def display_results(result: Dict, key_suffix: str = ""):
             "📈 Historische Performance",
             "🎲 Confidence-Level",
             "🕸️ Team-Radar",
-        ]
+        ],
+        key=f"viz_tabs{key_suffix}",
     )
 
     with viz_tab1:
-        show_poisson_heatmap(result)
+        show_poisson_heatmap(result, key_suffix=key_suffix)
 
     with viz_tab2:
-        show_historical_performance()
+        show_historical_performance(key_suffix=key_suffix)
 
     with viz_tab3:
-        show_confidence_gauge(result)
+        show_confidence_gauge(result, key_suffix=key_suffix)
 
     with viz_tab4:
         try:
-            show_team_radar(result)
+            show_team_radar(result, key_suffix=key_suffix)
         except Exception as e:
             st.warning(f"⚠️ Radar-Chart nicht verfügbar: {str(e)}")
             st.info("Das Team-Radar-Chart benötigt vollständige Match-Daten.")
