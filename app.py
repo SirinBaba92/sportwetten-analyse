@@ -959,13 +959,19 @@ def main():
             # nur als Flag gesetzt worden, aber nirgends verarbeitet)
             if st.session_state.get("_do_bulk_export_simple"):
                 st.session_state["_do_bulk_export_simple"] = False
+                import time as _time
+
                 from models import export_analysis_to_sheets
 
                 bulk_export_progress = st.progress(0)
+                bulk_export_status = st.empty()
                 success_count = 0
                 fail_count = 0
                 for i, item in enumerate(all_results):
                     bulk_export_progress.progress((i + 1) / len(all_results))
+                    bulk_export_status.text(
+                        f"Exportiere {i + 1}/{len(all_results)}: {item['tab']}"
+                    )
                     try:
                         ok = export_analysis_to_sheets(item["result"])
                         if ok:
@@ -976,6 +982,12 @@ def main():
                         fail_count += 1
                         st.warning(f"⚠️ Fehler beim Export von {item['tab']}: {str(e)}")
 
+                    # Kleine Pause zwischen den Exports, um Googles Sheets-API-Limit
+                    # (60 Lesezugriffe/Minute/Nutzer) bei vielen Matches nicht zu reißen
+                    if i < len(all_results) - 1:
+                        _time.sleep(1.5)
+
+                bulk_export_status.empty()
                 if success_count:
                     st.success(f"✅ {success_count} Matches erfolgreich exportiert!")
                     st.balloons()
