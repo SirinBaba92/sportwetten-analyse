@@ -903,10 +903,10 @@ def main():
 
             # Optional: Zeige alle Ergebnisse
             with st.expander(f"📋 Alle {len(all_results)} Ergebnisse anzeigen"):
-                for item in all_results:
+                for idx, item in enumerate(all_results):
                     with st.container():
                         st.markdown(f"### {item['tab']}")
-                        display_results(item["result"])
+                        display_results(item["result"], key_suffix=f"_{idx}_{item['tab']}")
                         st.markdown("---")
 
             # Export-UI für Bulk-Analyse - OPTIMIERTE VERSION
