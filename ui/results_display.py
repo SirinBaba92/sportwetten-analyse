@@ -322,11 +322,9 @@ def _display_ml_predictions_inline(result: Dict):
 
 def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: Dict):
     """
-    Zeigt Konsens zwischen SMART-PRECISION und ML
-    NUR wenn SMART-PRECISION Schwellenwerte erreicht:
-    - 1X2: ≥ 50%
-    - Over/Under: ≥ 60%
-    - BTTS: ≥ 60%
+    Zeigt Konsens zwischen SMART-PRECISION und ML.
+    Prüft ausschließlich, ob beide Systeme dieselbe Prediction abgeben -
+    ohne Mindest-Wahrscheinlichkeits-Schwellenwerte.
     """
     try:
         # Extrahiere SMART-PRECISION Predictions
@@ -371,32 +369,18 @@ def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: D
         )
         ml_score = ml_scoreline.get("scoreline", "N/A") if ml_scoreline else "N/A"
 
-        # Check Konsens MIT SCHWELLENWERTEN!
+        # Check Konsens - reiner Vergleich, ob beide Systeme dasselbe voraussagen
         consensus_items = []
-        weak_items = []  # Items die matchen aber Schwellenwert nicht erreichen
 
-        # 1X2: Nur wenn SMART ≥ 50%
         if smart_1x2 == ml_1x2:
-            if smart_1x2_prob >= 50:
-                consensus_items.append(f"{smart_1x2} ({smart_1x2_prob:.1f}%)")
-            else:
-                weak_items.append(f"{smart_1x2} (nur {smart_1x2_prob:.1f}%, <50%)")
+            consensus_items.append(f"{smart_1x2} ({smart_1x2_prob:.1f}%)")
 
-        # Over/Under: Nur wenn SMART ≥ 60%
         if smart_ou == ml_ou:
-            if smart_ou_prob >= 60:
-                consensus_items.append(f"{smart_ou} ({smart_ou_prob:.1f}%)")
-            else:
-                weak_items.append(f"{smart_ou} (nur {smart_ou_prob:.1f}%, <60%)")
+            consensus_items.append(f"{smart_ou} ({smart_ou_prob:.1f}%)")
 
-        # BTTS: Nur wenn SMART ≥ 60%
         if smart_btts == ml_btts:
-            if smart_btts_prob >= 60:
-                consensus_items.append(f"{smart_btts} ({smart_btts_prob:.1f}%)")
-            else:
-                weak_items.append(f"{smart_btts} (nur {smart_btts_prob:.1f}%, <60%)")
+            consensus_items.append(f"{smart_btts} ({smart_btts_prob:.1f}%)")
 
-        # Score (kein Schwellenwert)
         if smart_score == ml_score:
             consensus_items.append(f"Score: {smart_score}")
 
@@ -408,20 +392,17 @@ def _show_consensus_analysis(result: Dict, ml_predictions: Dict, ml_scoreline: D
                 f"🎯 **HOHE CONFIDENCE!**"
             )
         elif len(consensus_items) == 1:
-            msg = f"### 📊 Konsens-Analyse\n\n**Übereinstimmung:** {consensus_items[0]}\n\n"
-            if weak_items:
-                msg += f"⚠️ **Schwache Matches (Schwellenwert nicht erreicht):**\n{', '.join(weak_items)}\n\n"
-            msg += f"💡 Teilweise Einigkeit - moderate Vorsicht!"
-            st.info(msg)
+            st.info(
+                f"### 📊 Konsens-Analyse\n\n"
+                f"**Übereinstimmung:** {consensus_items[0]}\n\n"
+                f"💡 Teilweise Einigkeit - moderate Vorsicht!"
+            )
         else:
-            msg = f"### ⚠️ Konsens-Analyse\n\n"
-            if weak_items:
-                msg += f"**Schwache Matches (Schwellenwert nicht erreicht):**\n{', '.join(weak_items)}\n\n"
-                msg += f"💡 Predictions matchen, aber Alte Confidence zu niedrig!\n\n"
-            else:
-                msg += f"**Keine Übereinstimmung** zwischen den Systemen.\n\n"
-            msg += f"⚠️ Bei Uneinigkeit: höhere Vorsicht oder Skip!"
-            st.warning(msg)
+            st.warning(
+                f"### ⚠️ Konsens-Analyse\n\n"
+                f"**Keine Übereinstimmung** zwischen den Systemen.\n\n"
+                f"⚠️ Bei Uneinigkeit: höhere Vorsicht oder Skip!"
+            )
 
     except Exception as e:
         # Stilles Ignorieren wenn Konsens nicht berechnet werden kann
