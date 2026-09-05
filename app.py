@@ -550,7 +550,12 @@ def main():
                 st.session_state._scroll_to_results = False
             st.markdown("### 🧠 Letztes Analyse-Ergebnis")
             try:
-                display_results(st.session_state.analysis_cache_by_tab[_cache_key])
+                _cached_result = st.session_state.analysis_cache_by_tab[_cache_key]
+                # Immer aktualisieren, falls dieser Cache-Eintrag noch aus einer
+                # älteren Version stammt, die diese Felder nicht gesetzt hat
+                _cached_result['_sheet_id'] = sheet_id
+                _cached_result['_selected_tab'] = selected_tab
+                display_results(_cached_result)
             except Exception as e:
                 st.error(f"❌ Fehler beim Anzeigen der Analyse: {str(e)}")
                 st.info("Tipp: Nutze Tab 6 'ML Predictions' für zuverlässige Vorhersagen!")
@@ -652,10 +657,14 @@ def main():
                         else:
                             result = analyze_match_v47_ml(match_data)
                             result = choose_consistent_predicted_score(result)
-                            # Speichere sheet_id und tab für ML Predictions
-                            result['_sheet_id'] = sheet_id
-                            result['_selected_tab'] = selected_tab
                             st.session_state.current_match_result[match_key] = result
+                        # Immer aktualisieren (auch bei Cache-Treffer!) - garantiert
+                        # korrekte Werte für ML Predictions, unabhängig davon, ob
+                        # das Ergebnis frisch berechnet oder aus dem Cache kam
+                        # (verhindert veraltete/fehlende _sheet_id/_selected_tab bei
+                        # älteren Cache-Einträgen).
+                        result['_sheet_id'] = sheet_id
+                        result['_selected_tab'] = selected_tab
                         # Falls aus Cache geladen, Score ggf. anpassen
                         result = choose_consistent_predicted_score(result)
                         # Speichere in Session für Demo-Mode
