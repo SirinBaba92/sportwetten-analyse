@@ -35,3 +35,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Lokales Backup der Modelle vor einem Retrain
+models/backup_pre_retrain/

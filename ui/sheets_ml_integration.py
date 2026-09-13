@@ -10,78 +10,48 @@ from ml.football_ml_models import get_ml_models
 from ml.scoreline_predictor import ScorelinePredictor
 
 
+    # TeamStats-Felder dieses Projekts (data/models.py) -- 3 Felder juenger
+    # als das Prognostico-Projekt (shots_off_target, over25_pct_overall,
+    # over25_pct_ha existieren hier nicht), getattr(..., 0) faengt das ab.
+TEAM_STATS_FIELDS = [
+    "position", "games", "wins", "draws", "losses",
+    "goals_for", "goals_against", "goal_diff", "points",
+    "form_points", "form_goals_for", "form_goals_against",
+    "ha_points", "ha_goals_for", "ha_goals_against",
+    "ppg_overall", "ppg_ha", "avg_goals_match", "avg_goals_match_ha",
+    "goals_scored_per_match", "goals_conceded_per_match",
+    "goals_scored_per_match_ha", "goals_conceded_per_match_ha",
+    "btts_yes_overall", "btts_yes_ha", "cs_yes_overall", "cs_yes_ha",
+    "fts_yes_overall", "fts_yes_ha",
+    "xg_for", "xg_against", "xg_for_ha", "xg_against_ha",
+    "shots_per_match", "shots_on_target", "shots_off_target", "conversion_rate",
+    "over25_pct_overall", "over25_pct_ha", "possession",
+]
+
+
 def convert_match_data_to_features(match_data) -> Dict:
     """
     Konvertiert MatchData Objekt zu Feature Dictionary für ML Models
-    
+
+    Uebernimmt ALLE TeamStats-Felder -- vorher wurden nur ~13 von ~80
+    Feldern befuellt, der Rest lief in prepare_features() still auf 0.
+
     Args:
         match_data: MatchData Objekt vom Parser
-        
+
     Returns:
         Dictionary mit Features
     """
     features = {}
-    
-    # Home Team Features (direkt aus TeamStats, NICHT .overall!)
+
     if match_data.home_team:
-        ht = match_data.home_team
-        
-        # Basic Stats
-        features['home_position'] = ht.position if hasattr(ht, 'position') else 10
-        features['home_points'] = ht.points if hasattr(ht, 'points') else 0
-        features['home_goals_for'] = ht.goals_for if hasattr(ht, 'goals_for') else 0
-        features['home_goals_against'] = ht.goals_against if hasattr(ht, 'goals_against') else 0
-        features['home_wins'] = ht.wins if hasattr(ht, 'wins') else 0
-        features['home_draws'] = ht.draws if hasattr(ht, 'draws') else 0
-        features['home_losses'] = ht.losses if hasattr(ht, 'losses') else 0
-        features['home_ppg_overall'] = ht.ppg_overall if hasattr(ht, 'ppg_overall') else 0
-        features['home_goal_diff'] = ht.goal_diff if hasattr(ht, 'goal_diff') else 0
-        
-        # Home/Away Stats
-        features['home_total_goals_for_ha'] = ht.ha_goals_for if hasattr(ht, 'ha_goals_for') else 0
-        features['home_total_goals_against_ha'] = ht.ha_goals_against if hasattr(ht, 'ha_goals_against') else 0
-        features['home_ppg_ha'] = ht.ppg_ha if hasattr(ht, 'ppg_ha') else 0
-        
-        # Form (Last 5)
-        features['home_last5_points'] = ht.form_points if hasattr(ht, 'form_points') else 0
-        features['home_last5_goals_for'] = ht.form_goals_for if hasattr(ht, 'form_goals_for') else 0
-        features['home_last5_goals_against'] = ht.form_goals_against if hasattr(ht, 'form_goals_against') else 0
-        features['home_last5_goal_diff'] = features['home_last5_goals_for'] - features['home_last5_goals_against']
-        
-        # Additional Stats
-        features['home_avg_goals_scored_overall'] = ht.goals_scored_per_match if hasattr(ht, 'goals_scored_per_match') else 0
-        features['home_avg_goals_conceded_overall'] = ht.goals_conceded_per_match if hasattr(ht, 'goals_conceded_per_match') else 0
-        
-    # Away Team Features (direkt aus TeamStats, NICHT .overall!)
+        for field in TEAM_STATS_FIELDS:
+            features[f"home_{field}"] = getattr(match_data.home_team, field, 0)
+
     if match_data.away_team:
-        at = match_data.away_team
-        
-        # Basic Stats
-        features['away_position'] = at.position if hasattr(at, 'position') else 10
-        features['away_points'] = at.points if hasattr(at, 'points') else 0
-        features['away_goals_for'] = at.goals_for if hasattr(at, 'goals_for') else 0
-        features['away_goals_against'] = at.goals_against if hasattr(at, 'goals_against') else 0
-        features['away_wins'] = at.wins if hasattr(at, 'wins') else 0
-        features['away_draws'] = at.draws if hasattr(at, 'draws') else 0
-        features['away_losses'] = at.losses if hasattr(at, 'losses') else 0
-        features['away_ppg_overall'] = at.ppg_overall if hasattr(at, 'ppg_overall') else 0
-        features['away_goal_diff'] = at.goal_diff if hasattr(at, 'goal_diff') else 0
-        
-        # Home/Away Stats
-        features['away_total_goals_for_ha'] = at.ha_goals_for if hasattr(at, 'ha_goals_for') else 0
-        features['away_total_goals_against_ha'] = at.ha_goals_against if hasattr(at, 'ha_goals_against') else 0
-        features['away_ppg_ha'] = at.ppg_ha if hasattr(at, 'ppg_ha') else 0
-        
-        # Form (Last 5)
-        features['away_last5_points'] = at.form_points if hasattr(at, 'form_points') else 0
-        features['away_last5_goals_for'] = at.form_goals_for if hasattr(at, 'form_goals_for') else 0
-        features['away_last5_goals_against'] = at.form_goals_against if hasattr(at, 'form_goals_against') else 0
-        features['away_last5_goal_diff'] = features['away_last5_goals_for'] - features['away_last5_goals_against']
-        
-        # Additional Stats
-        features['away_avg_goals_scored_overall'] = at.goals_scored_per_match if hasattr(at, 'goals_scored_per_match') else 0
-        features['away_avg_goals_conceded_overall'] = at.goals_conceded_per_match if hasattr(at, 'goals_conceded_per_match') else 0
-    
+        for field in TEAM_STATS_FIELDS:
+            features[f"away_{field}"] = getattr(match_data.away_team, field, 0)
+
     # Odds
     if match_data.odds_1x2:
         features['odds_home'] = match_data.odds_1x2[0]
